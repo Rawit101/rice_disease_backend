@@ -1,0 +1,17 @@
+{
+  "name": "backend-farmer",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "build:knowledge": "node scripts/build-knowledge.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.13.2",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "form-data": "^4.0.5",
+    "openai": "^6.15.0"
+  }
+}

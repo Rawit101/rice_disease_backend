@@ -1,0 +1,9 @@
+
+flask==3.0.0  //เป็นWeb-Framework-ขนาดเล็กและรวดเร็วของ-Python-ใช้สำหรับสร้าง-API-Server-เพื่อรอรับ-Request-(เช่นรับข้อมูลหรือรูปภาพที่อัปโหลดเข้ามา)-แล้วส่งผลลัพธ์กลับไป
+flask-cors==4.0.0  //เป็นLibraryสำหรับจัดการCORS(Cross-Origin-Resource-Sharing)-ใน-Flask
+ultralytics==8.1.0  //เป็นLibraryสำหรับการใช้งานYOLOในการตรวจจับวัตถุ
+opencv-python==4.8.1.78  //เป็นLibraryสำหรับประมวลผลภาพและวิดีโอ
+numpy==1.24.3  //เป็นLibraryสำหรับการทำงานกับArrayและMatrix
+Pillow==10.1.0  //เป็นLibraryสำหรับประมวลผลภาพ
+torch==2.1.0  //เป็นLibraryสำหรับการทำงานกับDeepLearningและNeuralNetworks
+torchvision==0.16.0  //เป็นLibraryสำหรับการทำงานกับComputerVisionและImageProcessing

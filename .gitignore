@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+
+# Environment variables (secrets)
+.env
+
+# YOLO model weights
+*.pt
+
+# Temp files
+temp/
+
+# Backup files
+*.bak
+
+# Generated result images
+public/results/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
