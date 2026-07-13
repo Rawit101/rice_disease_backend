@@ -1,47 +1,59 @@
-# 🌾 Rice Disease Backend — LINE Bot "ไอนาย"
+# 🌾 Rice Disease Backend — LINE Bot "AI Nai"
 
-> ระบบ Backend สำหรับ LINE Bot ผู้เชี่ยวชาญด้านโรคข้าว ที่ใช้ **YOLOv8** วิเคราะห์โรคจากรูปใบข้าว และ **Gemini AI** ตอบคำถามเกี่ยวกับการดูแลข้าว พร้อมระบบ **RAG (Retrieval-Augmented Generation)** ที่ดึงข้อมูลจากฐานความรู้กรมการข้าว
+> A backend system for a LINE Bot specialized in rice disease diagnosis, using **YOLOv8** to analyze rice leaf images and **Gemini AI** to answer rice farming questions, powered by a **RAG (Retrieval-Augmented Generation)** pipeline built on Thailand's Rice Knowledge Bank.
+
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![Express](https://img.shields.io/badge/Express-000000?style=for-the-badge&logo=express&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white)
+![YOLOv8](https://img.shields.io/badge/YOLOv8-00FFFF?style=for-the-badge&logo=yolo&logoColor=black)
+![Gemini AI](https://img.shields.io/badge/Gemini_AI-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
+![ChromaDB](https://img.shields.io/badge/ChromaDB-FF6F00?style=for-the-badge&logo=databricks&logoColor=white)
+![LINE](https://img.shields.io/badge/LINE_API-06C755?style=for-the-badge&logo=line&logoColor=white)
+![OpenCV](https://img.shields.io/badge/OpenCV-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white)
 
 ---
 
-## 📋 สารบัญ
+## 📋 Table of Contents
 
-- [ฟีเจอร์หลัก](#-ฟีเจอร์หลัก)
-- [สถาปัตยกรรมระบบ](#-สถาปัตยกรรมระบบ)
-- [เทคโนโลยีที่ใช้](#-เทคโนโลยีที่ใช้)
-- [โครงสร้างโปรเจกต์](#-โครงสร้างโปรเจกต์)
-- [ข้อกำหนดเบื้องต้น](#-ข้อกำหนดเบื้องต้น)
-- [การติดตั้ง](#-การติดตั้ง)
-- [การตั้งค่า Environment Variables](#-การตั้งค่า-environment-variables)
-- [การรันระบบ](#-การรันระบบ)
+- [Key Features](#-key-features)
+- [System Architecture](#-system-architecture)
+- [Tech Stack](#-tech-stack)
+- [Project Structure](#-project-structure)
+- [Prerequisites](#-prerequisites)
+- [Installation](#-installation)
+- [Environment Variables](#-environment-variables)
+- [Running the System](#-running-the-system)
 - [API Endpoints](#-api-endpoints)
-- [โรคข้าวที่รองรับ](#-โรคข้าวที่รองรับ)
+- [Supported Rice Diseases](#-supported-rice-diseases)
 - [Rich Menu](#-rich-menu)
-- [ฐานข้อมูล](#-ฐานข้อมูล)
+- [Database Schema](#-database-schema)
+- [Internal Workflows](#-internal-workflows)
 
 ---
 
-## ✨ ฟีเจอร์หลัก
+## ✨ Key Features
 
-| ฟีเจอร์ | รายละเอียด |
-|---------|-----------|
-| 📸 **วิเคราะห์โรคข้าวด้วย AI** | ส่งรูปใบข้าวผ่าน LINE → YOLOv8 ตรวจจับโรค → ส่งรูป annotated + คำแนะนำกลับ |
-| 💬 **แชทบอทถาม-ตอบ** | ถามเรื่องโรคข้าว การปลูก ปุ๋ย ยา ผ่าน Gemini AI พร้อมบริบทจากผลวิเคราะห์ |
-| 🔍 **RAG Semantic Search** | ค้นหาข้อมูลโรคข้าวจากฐานความรู้กรมการข้าว ด้วย ChromaDB + Gemini Embeddings |
-| 📝 **Keyword Search Fallback** | ถ้า RAG Server ไม่พร้อม ระบบจะ fallback ไปใช้ keyword search จากไฟล์ JSON |
-| 🗄️ **บันทึกประวัติ** | เก็บข้อมูลผู้ใช้ ผลวิเคราะห์ และประวัติแชทใน SQLite |
-| 🔐 **Webhook Security** | LINE Signature Verification + Rate Limiting |
-| 📊 **Dashboard API** | REST API สำหรับดึงสถิติการใช้งาน |
-| 🖼️ **Rich Menu** | เมนูลัดในแชท LINE สำหรับเข้าถึงฟีเจอร์ต่าง ๆ |
+| Feature | Description |
+|---------|-------------|
+| 📸 **AI-Powered Disease Detection** | Send a rice leaf photo via LINE → YOLOv8 detects diseases → Returns annotated image + treatment advice |
+| 💬 **AI Chatbot (Q&A)** | Ask about rice diseases, farming, fertilizers, and pesticides — powered by Gemini AI with conversation context |
+| 🔍 **RAG Semantic Search** | Retrieves relevant rice disease information from a vector database (ChromaDB + Gemini Embeddings) |
+| 📝 **Keyword Search Fallback** | If the RAG server is unavailable, the system falls back to keyword-based search from a local JSON file |
+| 🗄️ **Persistent History** | Stores user profiles, analysis results, and chat history in SQLite |
+| 🔐 **Webhook Security** | LINE Signature Verification + In-memory Rate Limiting |
+| 📊 **Dashboard API** | REST API for retrieving system-wide usage statistics |
+| 🖼️ **Rich Menu** | Quick-access menu in LINE chat for key features |
 
 ---
 
-## 🏗️ สถาปัตยกรรมระบบ
+## 🏗️ System Architecture
 
 ```
 ┌─────────────┐       ┌──────────────────────────────────────────────┐
 │  LINE App   │       │              Backend Server                  │
-│  (ผู้ใช้)    │◄─────►│                                              │
+│   (User)    │◄─────►│                                              │
 └─────────────┘       │  ┌──────────────────────────────────────┐    │
                       │  │  index.js (Express, port 3000)       │    │
                       │  │  - LINE Webhook Handler              │    │
@@ -66,72 +78,71 @@
 
 ---
 
-## 🛠️ เทคโนโลยีที่ใช้
+## 🛠️ Tech Stack
 
 ### Node.js (Main Server)
 
-| Package | หน้าที่ |
-|---------|--------|
-| `express` | Web framework สำหรับ Webhook + REST API |
-| `axios` | HTTP client สำหรับเรียก LINE API, YOLO, RAG |
-| `@google/generative-ai` | Gemini API สำหรับ chatbot |
-| `better-sqlite3` | SQLite database |
-| `dotenv` | จัดการ environment variables |
-| `form-data` | ส่งรูปไปยัง YOLO Server |
+| Package | Purpose |
+|---------|---------|
+| `express` | Web framework for Webhook + REST API |
+| `axios` | HTTP client for LINE API, YOLO, and RAG calls |
+| `@google/generative-ai` | Gemini API for chatbot responses |
+| `better-sqlite3` | Embedded SQLite database |
+| `dotenv` | Environment variable management |
+| `form-data` | Multipart form uploads to YOLO Server |
 
 ### Python (ML Servers)
 
-| Package | หน้าที่ |
-|---------|--------|
-| `flask` + `flask-cors` | API Server สำหรับ YOLO และ RAG |
-| `ultralytics` | YOLOv8 object detection |
-| `opencv-python` | ประมวลผลภาพ, วาด bounding box |
-| `chromadb` | Vector database สำหรับ semantic search |
-| `google-genai` | Gemini Embeddings สำหรับ RAG |
-| `torch` + `torchvision` | Deep Learning runtime |
+| Package | Purpose |
+|---------|---------|
+| `flask` + `flask-cors` | Lightweight API servers for YOLO and RAG |
+| `ultralytics` | YOLOv8 object detection engine |
+| `opencv-python` | Image processing and bounding box rendering |
+| `chromadb` | Vector database for semantic search |
+| `google-genai` | Gemini Embeddings for RAG pipeline |
+| `torch` + `torchvision` | Deep learning runtime |
 
 ---
 
-## 📁 โครงสร้างโปรเจกต์
+## 📁 Project Structure
 
 ```
 backend-farmer/
 ├── index.js                  # 🚀 Main server — LINE Webhook + Chatbot + API
 ├── database.js               # 🗄️ SQLite module — Users, Analyses, Chat History
-├── yolo_server.py            # 🤖 YOLO API Server — วิเคราะห์โรคจากรูปภาพ
-├── rag_server.py             # 🔍 RAG Server — Semantic search จาก ChromaDB
-├── setup-richmenu.js         # 🖼️ สคริปต์สร้าง Rich Menu บน LINE
-├── combine_richmenu.py       # 🎨 สคริปต์รวมรูปเป็น Rich Menu image
+├── yolo_server.py            # 🤖 YOLO API Server — Disease detection from images
+├── rag_server.py             # 🔍 RAG Server — Semantic search via ChromaDB
+├── setup-richmenu.js         # 🖼️ Script to create and upload LINE Rich Menu
+├── combine_richmenu.py       # 🎨 Script to combine images into a Rich Menu image
 ├── package.json              # Node.js dependencies
 ├── requirements.txt          # Python dependencies
-├── .env                      # 🔐 Environment variables (ไม่ commit)
+├── .env                      # 🔐 Environment variables (not committed)
 ├── .gitignore
 │
-├── best.pt                   # 🧠 YOLO model weights (ไม่ commit)
+├── best.pt                   # 🧠 YOLO model weights (not committed)
 │
 ├── scripts/
-│   ├── build-knowledge.js    # Scrape ข้อมูลโรคข้าวจาก Rice Knowledge Bank
-│   └── build_rag.py          # สร้าง embeddings → ChromaDB
+│   ├── build-knowledge.js    # Scrapes rice disease data from Rice Knowledge Bank
+│   └── build_rag.py          # Generates embeddings and stores them in ChromaDB
 │
 ├── data/
-│   ├── rice_knowledge.json   # ข้อมูลโรคข้าว (scraped)
-│   └── rice_farmer.db        # SQLite database
+│   ├── rice_knowledge.json   # Scraped rice disease knowledge
+│   └── rice_farmer.db        # SQLite database file
 │
 ├── chroma_db/                # ChromaDB vector storage
-├── public/results/           # รูปผลวิเคราะห์ (ชั่วคราว, ลบอัตโนมัติ)
-└── temp/                     # ไฟล์ชั่วคราว
+├── public/results/           # Temporary annotated result images (auto-cleaned)
+└── temp/                     # Temporary files
 ```
 
 ---
 
-## 📋 ข้อกำหนดเบื้องต้น
+## 📋 Prerequisites
 
 - **Node.js** v18+
 - **Python** 3.9+
-- **LINE Developer Account** — สร้าง Messaging API Channel
-- **Google AI API Key** — สำหรับ Gemini AI
-- **ngrok** หรือ domain สาธารณะ — สำหรับ LINE Webhook
-
+- **LINE Developer Account** — Create a Messaging API Channel
+- **Google AI API Key** — For Gemini AI
+- **ngrok** or a public domain — For LINE Webhook URL
 
 ---
 
@@ -139,133 +150,133 @@ backend-farmer/
 
 ### LINE Webhook
 
-| Method | Path | รายละเอียด |
-|--------|------|-----------|
-| `POST` | `/webhook` | LINE Webhook — รับ events จาก LINE Platform |
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/webhook` | LINE Webhook — Receives events from the LINE Platform |
 
 ### REST APIs
 
-| Method | Path | รายละเอียด |
-|--------|------|-----------|
+| Method | Path | Description |
+|--------|------|-------------|
 | `GET` | `/` | Health check |
-| `GET` | `/api/stats` | สถิติรวมของระบบ (จำนวนผู้ใช้, วิเคราะห์, โรคที่พบบ่อย) |
-| `GET` | `/api/users/:userId/history` | ประวัติการใช้งานของผู้ใช้ |
+| `GET` | `/api/stats` | System-wide statistics (users, analyses, top diseases) |
+| `GET` | `/api/users/:userId/history` | Usage history for a specific user |
 
 ### YOLO Server (port 5000)
 
-| Method | Path | รายละเอียด |
-|--------|------|-----------|
-| `GET` | `/` | สถานะ server + model info |
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Server status + model info |
 | `GET` | `/health` | Health check |
-| `GET` | `/classes` | รายชื่อ class ที่โมเดลรองรับ |
-| `POST` | `/predict` | วิเคราะห์โรคจากรูปภาพ (multipart/form-data, key: `image`) |
+| `GET` | `/classes` | List of classes supported by the model |
+| `POST` | `/predict` | Analyze a rice leaf image (multipart/form-data, key: `image`) |
 
 ### RAG Server (port 5001)
 
-| Method | Path | รายละเอียด |
-|--------|------|-----------|
+| Method | Path | Description |
+|--------|------|-------------|
 | `GET` | `/health` | Health check |
-| `GET` | `/stats` | สถิติ knowledge base |
-| `POST` | `/search` | Semantic search (search only) |
-| `POST` | `/query` | Search + Generate คำตอบด้วย Gemini |
+| `GET` | `/stats` | Knowledge base statistics |
+| `POST` | `/search` | Semantic search (context retrieval only) |
+| `POST` | `/query` | Search + Generate answer with Gemini |
 
 ---
 
-## 🦠 โรคข้าวที่รองรับ
+## 🦠 Supported Rice Diseases
 
-โมเดล YOLOv8 (`best.pt`) สามารถตรวจจับโรคข้าวได้ดังนี้:
+The YOLOv8 model (`best.pt`) can detect the following rice diseases:
 
-| # | ชื่อโรค (ไทย) | ชื่อโรค (English) | Class Name |
-|---|--------------|------------------|------------|
-| 1 | โรคขอบใบแห้ง | Bacterial Leaf Blight | `bacterial_leaf_blight` |
-| 2 | โรคใบจุดสีน้ำตาล | Brown Spot | `brown_spot` |
-| 3 | โรคไหม้ / โรคใบไหม้ | Rice Blast / Leaf Blast | `rice_blast` / `leaf_blast` |
-| 4 | โรคใบขีดสีน้ำตาล | Narrow Brown Leaf Spot | `narrow_brown_leaf_spot` |
-| 5 | โรคดอกกระถิน | False Smut | `false_smut` |
-| 6 | โรคเมล็ดด่าง | Dirty Seed | `dirty_seed` |
-| 7 | โรคกาบใบเน่า | Sheath Rot | `sheath_rot` |
-| 8 | โรคลำต้นเน่า | Stem Rot | `stem_rot` |
-| 9 | โรคใบแถบแดง | Red Stripe | `red_stripe` |
-| 10 | ไม่พบโรค (สุขภาพดี) | Healthy | `healthy` |
+| # | Disease (Thai) | Disease (English) | Class Name |
+|---|---------------|-------------------|------------|
+| 1 | Bacterial Leaf Blight | Bacterial Leaf Blight | `bacterial_leaf_blight` |
+| 2 | Brown Spot | Brown Spot | `brown_spot` |
+| 3 | Rice Blast / Leaf Blast | Rice Blast / Leaf Blast | `rice_blast` / `leaf_blast` |
+| 4 | Narrow Brown Leaf Spot | Narrow Brown Leaf Spot | `narrow_brown_leaf_spot` |
+| 5 | False Smut | False Smut | `false_smut` |
+| 6 | Dirty Seed | Dirty Seed | `dirty_seed` |
+| 7 | Sheath Rot | Sheath Rot | `sheath_rot` |
+| 8 | Stem Rot | Stem Rot | `stem_rot` |
+| 9 | Red Stripe | Red Stripe | `red_stripe` |
+| 10 | Healthy | Healthy | `healthy` |
 
 ---
 
 ## 🖼️ Rich Menu
 
-ระบบมี Rich Menu 3 ปุ่ม (layout แนวตั้ง 2500×1686 px):
+The system includes a LINE Rich Menu with 3 buttons (vertical layout, 2500×1686 px):
 
-| ปุ่ม | ฟังก์ชัน |
-|------|---------|
-| 🔝 **องค์ความรู้เรื่องข้าว** | เปิดเว็บ [Rice Knowledge Bank](https://rkb.ricethailand.go.th) |
-| 📸 **เลือกรูปภาพ** | เปิด Camera Roll เพื่อส่งรูปวิเคราะห์โรค |
-| 🦠 **โรคข้าว** | เปิดเว็บแสดงข้อมูลโรคข้าว |
+| Button | Function |
+|--------|----------|
+| 🔝 **Rice Knowledge** | Opens the [Rice Knowledge Bank](https://rkb.ricethailand.go.th) website |
+| 📸 **Select Photo** | Opens the device camera roll to send a photo for analysis |
+| 🦠 **Rice Diseases** | Opens the rice disease information website |
 
 
 ---
 
-## 🗄️ ฐานข้อมูล
+## 🗄️ Database Schema
 
-ใช้ **SQLite** (`data/rice_farmer.db`) เก็บข้อมูล 3 ตาราง:
+Uses **SQLite** (`data/rice_farmer.db`) with 3 tables:
 
-### `users` — ข้อมูลผู้ใช้ LINE
+### `users` — LINE User Profiles
 
-| Column | Type | รายละเอียด |
-|--------|------|-----------|
+| Column | Type | Description |
+|--------|------|-------------|
 | `line_user_id` | TEXT (UNIQUE) | LINE User ID |
-| `display_name` | TEXT | ชื่อที่แสดงใน LINE |
-| `first_seen_at` | DATETIME | เวลาที่เห็นครั้งแรก |
-| `last_active_at` | DATETIME | เวลาที่ใช้งานล่าสุด |
-| `total_analyses` | INTEGER | จำนวนครั้งที่วิเคราะห์โรค |
-| `total_messages` | INTEGER | จำนวนข้อความที่ส่ง |
+| `display_name` | TEXT | LINE display name |
+| `first_seen_at` | DATETIME | First interaction timestamp |
+| `last_active_at` | DATETIME | Last activity timestamp |
+| `total_analyses` | INTEGER | Total number of disease analyses |
+| `total_messages` | INTEGER | Total number of messages sent |
 
-### `analyses` — ผลการวิเคราะห์โรคข้าว
+### `analyses` — Rice Disease Analysis Results
 
-| Column | Type | รายละเอียด |
-|--------|------|-----------|
+| Column | Type | Description |
+|--------|------|-------------|
 | `line_user_id` | TEXT | LINE User ID |
-| `disease` | TEXT | ชื่อโรคที่พบ |
-| `confidence` | REAL | ค่าความมั่นใจ (0-1) |
-| `severity` | TEXT | ระดับความรุนแรง (ต่ำ/ปานกลาง/สูง) |
-| `advice` | TEXT | คำแนะนำจาก Gemini AI |
-| `image_url` | TEXT | URL รูปที่วาด bounding box |
+| `disease` | TEXT | Detected disease name |
+| `confidence` | REAL | Confidence score (0–1) |
+| `severity` | TEXT | Severity level (Low / Medium / High) |
+| `advice` | TEXT | Treatment advice from Gemini AI |
+| `image_url` | TEXT | URL of the annotated image |
 
-### `chat_history` — ประวัติการสนทนา
+### `chat_history` — Conversation Logs
 
-| Column | Type | รายละเอียด |
-|--------|------|-----------|
+| Column | Type | Description |
+|--------|------|-------------|
 | `line_user_id` | TEXT | LINE User ID |
-| `role` | TEXT | `user` หรือ `bot` |
-| `message` | TEXT | เนื้อหาข้อความ |
-| `created_at` | DATETIME | เวลาที่ส่ง |
+| `role` | TEXT | `user` or `bot` |
+| `message` | TEXT | Message content |
+| `created_at` | DATETIME | Timestamp |
 
 ---
 
-## ⚙️ การทำงานภายใน
+## ⚙️ Internal Workflows
 
-### Flow การวิเคราะห์โรคจากรูปภาพ
-
-```
-1. ผู้ใช้ส่งรูปใบข้าวผ่าน LINE
-2. Webhook รับ event → ตอบ "กำลังวิเคราะห์..."
-3. ดาวน์โหลดรูปจาก LINE Content API
-4. ส่งรูปไปยัง YOLO Server (/predict)
-5. YOLO วิเคราะห์ → ส่งผลลัพธ์ + รูป annotated กลับ
-6. เรียก Gemini AI สร้างคำแนะนำ (หรือใช้ fallback ถ้า API ล่ม)
-7. บันทึกรูป annotated → public/results/
-8. บันทึกผลลง SQLite + Session (in-memory)
-9. Push ข้อความ + รูปผลลัพธ์กลับไปยังผู้ใช้ผ่าน LINE
-```
-
-### Flow การตอบคำถาม (Chat)
+### Image Analysis Flow
 
 ```
-1. ผู้ใช้พิมพ์คำถามเรื่องข้าว
-2. ตรวจจับทักทาย/ลา/ขอบคุณ → ตอบทันที (ไม่เรียก AI)
-3. ลอง RAG Semantic Search ก่อน (ChromaDB)
-4. ถ้า RAG ไม่พร้อม → Fallback เป็น Keyword Search
-5. รวม context (ผลวิเคราะห์ + ประวัติสนทนา + ข้อมูลโรค) → สร้าง prompt
-6. เรียก Gemini AI (ลอง gemini-2.5-flash-lite ก่อน → fallback เป็น gemini-2.5-flash)
-7. บันทึกประวัติแชท + ตอบผู้ใช้ผ่าน LINE
+1. User sends a rice leaf photo via LINE
+2. Webhook receives the event → Replies "Analyzing..."
+3. Downloads the image from LINE Content API
+4. Sends the image to YOLO Server (/predict)
+5. YOLO detects diseases → Returns predictions + annotated image
+6. Calls Gemini AI to generate treatment advice (or uses fallback if API is unavailable)
+7. Saves annotated image to public/results/
+8. Stores results in SQLite + in-memory session
+9. Pushes the annotated image + advice back to the user via LINE
+```
+
+### Chat Q&A Flow
+
+```
+1. User types a question about rice
+2. Checks for greetings/farewells/thanks → Replies instantly (no AI call)
+3. Attempts RAG Semantic Search first (ChromaDB)
+4. If RAG is unavailable → Falls back to Keyword Search
+5. Combines context (analysis results + chat history + disease knowledge) → Builds prompt
+6. Calls Gemini AI (tries gemini-2.5-flash-lite first → falls back to gemini-2.5-flash)
+7. Saves chat history + Replies to user via LINE
 ```
 
 ---
@@ -276,6 +287,6 @@ This project is for educational purposes.
 
 ---
 
-## 👨‍💻 ผู้พัฒนา
+## 👨‍💻 Developers
 
-พัฒนาโดยทีมนักศึกษาเพื่อช่วยเหลือเกษตรกรชาวนาไทย 🌾
+Built by a student team to help Thai rice farmers 🌾
