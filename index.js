@@ -1,4 +1,5 @@
-import "dotenv/config"
+import dotenv from "dotenv"
+dotenv.config({ override: true })
 import express from "express"
 import axios from "axios"
 import fs from "fs"
@@ -7,6 +8,11 @@ import path from "path"
 import crypto from "crypto"
 import FormData from "form-data"
 import { fileURLToPath } from "url"
+import {
+    initDatabase, closeDatabase,
+    upsertUser, saveAnalysis, saveChatMessage,
+    getDashboardStats, getUserStats
+} from './database.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -34,8 +40,10 @@ app.use('/public', express.static(path.join(__dirname, 'public')))
 // =====================
 const LINE_TOKEN = process.env.LINE_TOKEN || process.env.CHANNEL_ACCESS_TOKEN
 const CHANNEL_SECRET = process.env.CHANNEL_SECRET
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+const MAXPLUS_API_KEY = process.env.MAXPLUS_API_KEY
+const MAXPLUS_BASE_URL = process.env.MAXPLUS_BASE_URL || 'https://api.maxplus-ai.cc'
 const YOLO_API_URL = process.env.YOLO_API_URL || "http://localhost:5000/predict"
+const RAG_API_URL = process.env.RAG_API_URL || "http://localhost:5001/search"
 let BASE_URL = process.env.BASE_URL || ""  // auto-detect จาก ngrok webhook request
 
 if (!LINE_TOKEN) {
@@ -47,10 +55,10 @@ if (!CHANNEL_SECRET) {
     console.warn('⚠️  CHANNEL_SECRET not found - webhook signature verification disabled')
 }
 
-if (!GEMINI_API_KEY) {
-    console.warn('⚠️  GEMINI_API_KEY not found - will use fallback advice only')
+if (!MAXPLUS_API_KEY) {
+    console.warn('⚠️  MAXPLUS_API_KEY not found - will use fallback advice only')
 } else {
-    console.log('✅ GEMINI_API_KEY loaded')
+    console.log('✅ MAXPLUS_API_KEY loaded (MaxPlus AI)')
 }
 
 // =====================
@@ -63,6 +71,7 @@ const MAX_KNOWLEDGE_CHARS_PER_ENTRY = 2200
 function normalizeText(text = '') {
     return String(text)
         .toLowerCase()
+        .replace(/เเ/g, 'แ')
         .replace(/\s+/g, ' ')
         .trim()
 }
@@ -94,7 +103,7 @@ const riceKnowledge = loadRiceKnowledge()
 
 function extractSearchTerms(text = '') {
     return normalizeText(text)
-        .split(/[^\p{L}\p{N}]+/u)
+        .split(/[^\p{L}\p{M}\p{N}]+/u)
         .map(term => term.trim())
         .filter(term => term.length >= 2)
         .filter(term => !['ครับ', 'ค่ะ', 'คะ', 'หน่อย', 'ยังไง', 'อะไร', 'วิธี', 'แก้'].includes(term))
@@ -104,6 +113,8 @@ function findKnowledgeContext(question, diseaseHint = '') {
     if (riceKnowledge.length === 0) return ''
 
     const query = normalizeText(`${question} ${diseaseHint}`)
+    const normalizedQuestion = normalizeText(question)
+    const normalizedHint = normalizeText(diseaseHint)
     const terms = extractSearchTerms(query)
 
     const ranked = riceKnowledge
@@ -112,8 +123,11 @@ function findKnowledgeContext(question, diseaseHint = '') {
             const titleWithoutPrefix = title.replace(/^โรค/, '')
             let score = 0
 
-            if (query.includes(title)) score += 120
-            if (titleWithoutPrefix && query.includes(titleWithoutPrefix)) score += 90
+            if (normalizedQuestion.includes(title)) score += 200
+            if (titleWithoutPrefix && normalizedQuestion.includes(titleWithoutPrefix)) score += 150
+
+            if (normalizedHint.includes(title)) score += 50
+            if (titleWithoutPrefix && normalizedHint.includes(titleWithoutPrefix)) score += 30
 
             for (const term of terms) {
                 if (title.includes(term)) score += 25
@@ -138,10 +152,46 @@ function findKnowledgeContext(question, diseaseHint = '') {
         .join('\n\n---\n\n')
 }
 
+// =====================
+// RAG Semantic Search (เรียก rag_server.py → ChromaDB)
+// =====================
+async function fetchRAGContext(question, diseaseHint = '') {
+    try {
+        const response = await axios.post(RAG_API_URL, {
+            question,
+            disease_hint: diseaseHint,
+            top_k: MAX_KNOWLEDGE_ENTRIES
+        }, { timeout: 10000 })
+
+        if (response.data?.context) {
+            log('INFO', `🔍 RAG search: ${response.data.total_results} results (${response.data.search_time_ms}ms)`)
+            return response.data.context
+        }
+        return ''
+    } catch (error) {
+        log('WARN', `⚠️ RAG server unavailable: ${error.message} — fallback to keyword search`)
+        return null  // null = ให้ fallback ไปใช้ keyword search
+    }
+}
+
+async function getKnowledgeContext(question, diseaseHint = '') {
+    // ลอง RAG (semantic search) ก่อน
+    const ragContext = await fetchRAGContext(question, diseaseHint)
+    if (ragContext !== null && ragContext !== '') {
+        return ragContext
+    }
+
+    // Fallback: keyword search เดิม
+    if (ragContext === null) {
+        log('INFO', '📝 Using keyword search fallback')
+    }
+    return findKnowledgeContext(question, diseaseHint)
+}
+
 function buildLocalKnowledgeFallback(question, diseaseHint = '') {
     const context = findKnowledgeContext(question, diseaseHint)
     if (!context) {
-        return "ขออภัยครับ ตอนนี้ Gemini มีผู้ใช้งานหนาแน่นมาก เลยตอบแบบ AI ไม่ได้ชั่วคราว\nลองถามชื่อโรคข้าวให้ชัดขึ้น เช่น โรคไหม้ โรคขอบใบแห้ง หรือโรคกาบใบแห้ง แล้วผมจะดึงข้อมูลจากไฟล์กรมการข้าวในเครื่องมาตอบให้ครับ"
+        return "ขออภัยครับ ตอนนี้ระบบ AI มีผู้ใช้งานหนาแน่นมาก เลยตอบแบบ AI ไม่ได้ชั่วคราว\nลองถามชื่อโรคข้าวให้ชัดขึ้น เช่น โรคไหม้ โรคขอบใบแห้ง หรือโรคกาบใบแห้ง แล้วผมจะดึงข้อมูลจากไฟล์กรมการข้าวในเครื่องมาตอบให้ครับ"
     }
 
     const firstBlock = context.split('\n\n---\n\n')[0]
@@ -155,7 +205,7 @@ function buildLocalKnowledgeFallback(question, diseaseHint = '') {
         .trim()
 
     const shortContent = content.length > 900 ? `${content.slice(0, 900)}...` : content
-    return `ตอนนี้ Gemini มีผู้ใช้งานหนาแน่นมาก ผมตอบจากไฟล์ข้อมูลกรมการข้าวในเครื่องให้ก่อนนะครับ\n\n${title}\n\n${shortContent}\n\nแหล่งข้อมูล: ${source}`
+    return `ตอนนี้ระบบ AI มีผู้ใช้งานหนาแน่นมาก ผมตอบจากไฟล์ข้อมูลกรมการข้าวในเครื่องให้ก่อนนะครับ\n\n${title}\n\n${shortContent}\n\nแหล่งข้อมูล: ${source}`
 }
 
 // =====================
@@ -284,47 +334,44 @@ setInterval(() => {
 }, 5 * 60 * 1000)
 
 // =====================
-// Gemini API Helper (ลด code ซ้ำ)
+// MaxPlus AI Helper — เรียก Claude/GPT ผ่าน OpenAI-compatible endpoint
 // =====================
-const GEMINI_MODELS = [
-    'gemini-2.0-flash-lite',
-    'gemini-2.0-flash'
+const AI_MODELS = [
+    'claude-haiku-4-5-20251001',   // เร็ว ประหยัด — ตัวหลัก
+    'claude-sonnet-4-6'             // สมดุลคุณภาพ/ความเร็ว — fallback
 ]
 
-async function callGemini(prompt, options = {}) {
+async function callAI(prompt, options = {}) {
     const { timeout = 30000 } = options
     let rateLimitCount = 0
     const MAX_RATE_LIMIT_RETRIES = 2  // จำกัดการ retry เมื่อโดน rate limit
 
-    for (const modelName of GEMINI_MODELS) {
+    for (const modelName of AI_MODELS) {
         try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`
+            const url = `${MAXPLUS_BASE_URL}/v1/chat/completions`
 
             const body = {
-                contents: [
-                    {
-                        parts: [{ text: prompt }]
-                    }
-                ]
+                model: modelName,
+                messages: [
+                    { role: "user", content: prompt }
+                ],
+                max_tokens: 2048
             }
 
             const res = await axios.post(url, body, {
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${MAXPLUS_API_KEY}`
+                },
                 timeout
             })
 
-            log('INFO', `✅ Using model: ${modelName}`)
+            log('INFO', `✅ Using model: ${modelName} (MaxPlus AI)`)
 
-            // ป้องกัน Gemini ตอบว่างหรือถูก safety filter block
-            const candidates = res.data?.candidates
-            if (!candidates || candidates.length === 0) {
-                log('WARN', `⚠️ Model ${modelName} returned empty candidates`)
-                continue
-            }
-
-            const rawText = candidates[0]?.content?.parts?.[0]?.text
+            // ดึงข้อความจาก OpenAI-compatible response format
+            const rawText = res.data?.choices?.[0]?.message?.content
             if (!rawText) {
-                log('WARN', `⚠️ Model ${modelName} returned empty text (possibly blocked by safety filter)`)
+                log('WARN', `⚠️ Model ${modelName} returned empty response`)
                 continue
             }
 
@@ -332,22 +379,21 @@ async function callGemini(prompt, options = {}) {
         } catch (error) {
             log('ERROR', `❌ Model ${modelName} failed:`, error.response?.data?.error?.message || error.message)
 
-            // ถ้าเป็น 429 (rate limit) — จำกัดจำนวน retry
-            if (error.response?.status === 429) {
+            // ถ้าเป็น 429 (rate limit) หรือ 503 (service unavailable) — ให้ลอง retry
+            if (error.response?.status === 429 || error.response?.status === 503) {
                 rateLimitCount++
                 if (rateLimitCount >= MAX_RATE_LIMIT_RETRIES) {
-                    log('ERROR', `❌ Rate limited ${rateLimitCount} ครั้ง — หยุดเพื่อประหยัด quota`)
+                    log('ERROR', `❌ API overloaded ${rateLimitCount} ครั้ง — หยุดเพื่อประหยัด quota`)
                     break
                 }
                 const waitTime = 2 ** rateLimitCount  // exponential backoff: 2, 4 วินาที
-                log('WARN', `⏳ Rate limited, waiting ${waitTime}s... (${rateLimitCount}/${MAX_RATE_LIMIT_RETRIES})`)
+                log('WARN', `⏳ API overloaded (Status ${error.response?.status}), waiting ${waitTime}s... (${rateLimitCount}/${MAX_RATE_LIMIT_RETRIES})`)
                 await new Promise(resolve => setTimeout(resolve, waitTime * 1000))
             }
             continue
         }
     }
-
-    throw new Error('All Gemini models failed')
+    throw new Error('All AI models failed')
 }
 
 // =====================
@@ -393,7 +439,7 @@ async function pushMessage(userId, messages) {
 }
 
 // =====================
-// ตรวจจับทักทาย/กล่าวลา (ไม่ต้องเรียก Gemini — ประหยัด API)
+// ตรวจจับทักทาย/กล่าวลา (ไม่ต้องเรียก AI — ประหยัด API)
 // =====================
 const GREETING_PATTERNS = /^(สวัสดี|หวัดดี|ดีครับ|ดีค่ะ|ดีจ้า|ดี$|hello|hi|hey|สวัสดีครับ|สวัสดีค่ะ|หวัดดีครับ|หวัดดีค่ะ)/i
 const FAREWELL_PATTERNS = /^(บาย|ลาก่อน|ไว้เจอกัน|bye|ลาก่อนครับ|ลาก่อนค่ะ|ไปก่อน)/i
@@ -410,7 +456,7 @@ function getLocalReply(text) {
     if (THANKS_PATTERNS.test(trimmed)) {
         return "😊 ยินดีครับ! ถ้ามีอะไรอยากถามเพิ่มเติมเรื่องข้าว บอกได้เลยนะครับ 🌾"
     }
-    return null  // ไม่ match → ส่งต่อให้ Gemini
+    return null  // ไม่ match → ส่งต่อให้ AI
 }
 
 // =====================
@@ -428,13 +474,17 @@ async function askChatbot(text, userId) {
                 history.push({ role: 'user', text })
                 history.push({ role: 'bot', text: localReply })
                 saveSession(userId, { ...session, chatHistory: history.slice(-MAX_HISTORY * 2) })
+
+                // 💾 บันทึกลง Database
+                saveChatMessage(userId, 'user', text)
+                saveChatMessage(userId, 'bot', localReply)
             }
             return localReply
         }
 
         // ดึง session ของ user เพื่อใช้เป็น context
         const session = userId ? getSession(userId) : null
-        const knowledgeContext = findKnowledgeContext(text, session?.disease || '')
+        const knowledgeContext = await getKnowledgeContext(text, session?.disease || '')
 
         let contextInfo = ''
         if (session) {
@@ -455,7 +505,7 @@ async function askChatbot(text, userId) {
         const prompt = `คุณคือผู้เชี่ยวชาญด้านโรคข้าวและการดูแลข้าวโดยเฉพาะ ชื่อ "ไอนาย" ทำหน้าที่ให้คำปรึกษาเกษตรกรชาวนาไทย อ้างอิงองค์ความรู้จากกรมการข้าว (rkb.ricethailand.go.th) ห้ามตอบคำถามที่ไม่เกี่ยวข้องกับข้าวเด็ดขาด
 
 ข้อมูลอ้างอิงจากไฟล์ local ที่ scrape จาก Rice Knowledge Bank:
-${knowledgeContext || 'ไม่พบข้อมูลอ้างอิงที่ตรงกับคำถามนี้ในไฟล์ local ให้ตอบเฉพาะความรู้ทั่วไปเรื่องข้าวอย่างระมัดระวัง และอย่าอ้างว่าเป็นข้อมูลจากเว็บถ้าไม่มีในข้อความอ้างอิง'}
+${knowledgeContext || 'ไม่พบข้อมูลอ้างอิง ให้ตอบจากความรู้ของคุณเองแบบผู้เชี่ยวชาญ ห้ามบอกว่าไม่มีข้อมูลหรือหาไม่พบ ให้ตอบคำถามไปเลย'}
 
 กฎการตอบ:
 1. ตอบเฉพาะเรื่องโรคข้าว การปลูกข้าว ศัตรูพืช ปุ๋ย ยา การดูแลข้าวเท่านั้น
@@ -473,7 +523,7 @@ ${knowledgeContext || 'ไม่พบข้อมูลอ้างอิงท
 
 คำถาม: ${text}`
 
-        const fullText = await callGemini(prompt)
+        const fullText = await callAI(prompt)
 
         // บันทึกประวัติสนทนา
         if (userId) {
@@ -483,6 +533,10 @@ ${knowledgeContext || 'ไม่พบข้อมูลอ้างอิงท
             history.push({ role: 'bot', text: fullText })
             // เก็บแค่ล่าสุด MAX_HISTORY คู่
             saveSession(userId, { ...currentSession, chatHistory: history.slice(-MAX_HISTORY * 2) })
+
+            // 💾 บันทึกลง Database
+            saveChatMessage(userId, 'user', text)
+            saveChatMessage(userId, 'bot', fullText)
         }
 
         // จำกัดความยาวไม่เกิน 4500 ตัวอักษร (LINE รองรับ 5000 เผื่อ buffer)
@@ -496,7 +550,7 @@ ${knowledgeContext || 'ไม่พบข้อมูลอ้างอิงท
         return fullText
     } catch (error) {
         log('ERROR', 'Chatbot error:', error.message)
-        if (error.message === 'All Gemini models failed') {
+        if (error.message === 'All AI models failed') {
             return buildLocalKnowledgeFallback(text, userId ? getSession(userId)?.disease : '')
         }
         return "❌ ขออภัยครับ เกิดข้อผิดพลาด\nกรุณาลองใหม่อีกครั้งนะครับ"
@@ -602,7 +656,7 @@ async function askDiseaseAdvice(disease, severity) {
 รวมไม่เกิน 120 คำ ภาษาง่ายๆ เป็นกันเอง ให้ข้อมูลที่ชาวนาใช้ได้จริง`
 
     try {
-        return await callGemini(prompt)
+        return await callAI(prompt)
     } catch (error) {
         log('ERROR', 'Disease advice error:', error.message)
         log('INFO', '📝 Using fallback advice')
@@ -635,13 +689,22 @@ async function analyzeRiceDiseaseWithYOLO(imagePath) {
             const topPrediction = response.data.predictions[0]
 
             const diseaseMap = {
-                'brown_spot': 'โรคใบจุดสีน้ำตาล (Brown Spot)',
-                'leaf_blast': 'โรคใบไหม้ (Leaf Blast)',
-                'rice_blast': 'โรคไหม้ (Rice Blast)',
+                // โรคที่โมเดล best.pt ปัจจุบันวิเคราะห์ได้
+                'bacterial_blight': 'โรคขอบใบแห้ง (Bacterial Leaf Blight)',
                 'bacterial_leaf_blight': 'โรคขอบใบแห้ง (Bacterial Leaf Blight)',
+                'brown_spot': 'โรคใบจุดสีน้ำตาล (Brown Spot)',
+                'rice_blast': 'โรคไหม้ (Rice Blast)',
+                'leaf_blast': 'โรคใบไหม้ (Leaf Blast)',
+                'narrow_brown_spot': 'โรคใบขีดสีน้ำตาล (Narrow Brown Spot)',
                 'narrow_brown_leaf_spot': 'โรคใบขีดสีน้ำตาล (Narrow Brown Leaf Spot)',
+                'false_smut': 'โรคดอกกระถิน (False Smut)',
+                'dirty_seed': 'โรคเมล็ดด่าง (Dirty Seed)',
+                'sheath_rot': 'โรคกาบใบเน่า (Sheath Rot)',
+                'stem_rot': 'โรคลำต้นเน่า (Stem Rot)',
+                'red_stripe': 'โรคใบแถบแดง (Red Stripe)',
+
                 'healthy': 'ไม่พบโรค (Healthy)',
-                // === สำหรับ model อนาคต (ยังไม่มีใน best.pt ปัจจุบัน) ===
+                // === สำหรับ model อนาคต ===
                 'hispa': 'โรคหนอนชอนใบ (Hispa)',
                 'dead_heart': 'โรคหนอนกอ (Dead Heart)',
                 'tungro': 'โรคใบสีส้ม (Tungro)'
@@ -799,9 +862,27 @@ async function handleEvent(event) {
     const replyToken = event.replyToken
 
     try {
+        const userId = event.source?.userId
+
+        // 💾 บันทึก/อัปเดตข้อมูลผู้ใช้ใน Database (ดึง LINE profile ครั้งแรก)
+        if (userId) {
+            try {
+                const profileRes = await axios.get(
+                    `https://api.line.me/v2/bot/profile/${userId}`,
+                    {
+                        headers: { Authorization: `Bearer ${LINE_TOKEN}` },
+                        timeout: 5000
+                    }
+                )
+                upsertUser(userId, profileRes.data?.displayName || null)
+            } catch {
+                // ดึง profile ไม่ได้ก็ไม่เป็นไร บันทึกแค่ userId
+                upsertUser(userId)
+            }
+        }
+
         // ===== Postback จาก Rich Menu =====
         if (event.type === "postback") {
-            const userId = event.source.userId
             console.log(`📩 Postback received: ${event.postback.data}`)
             await handlePostback(replyToken, event.postback.data, userId)
             return
@@ -809,7 +890,6 @@ async function handleEvent(event) {
 
         // ===== ข้อความ =====
         if (event.message?.type === "text") {
-            const userId = event.source.userId
             const text = event.message.text
 
             // จัดการข้อความจากปุ่ม Rich Menu "อัปโหลดรูปภาพโรคข้าว"
@@ -833,8 +913,6 @@ async function handleEvent(event) {
 
         // ===== รูปภาพ =====
         if (event.message?.type === "image") {
-            const userId = event.source.userId
-
             await replyMessage(replyToken, [
                 { type: "text", text: "📷 ได้รับรูปแล้ว กำลังวิเคราะห์โรคข้าวด้วย AI..." },
             ])
@@ -909,7 +987,17 @@ async function processImage(messageId, userId) {
             return
         }
 
-        if (result.confidence < 0.3) {
+        if (result.disease === "ไม่พบโรค" || result.confidence === 0) {
+            await pushMessage(userId, [
+                {
+                    type: "text",
+                    text: `✅ ไม่พบร่องรอยของโรคข้าวที่ AI รู้จักในภาพนี้ครับ\n(หรืออาจจะถ่ายไกล/ไม่ชัดไป)\n\n📸 ลองถ่ายรูปใหม่นะครับ:\n- ถ่ายใกล้ๆ ใบที่มีอาการ\n- ใช้แสงให้ดี\n- ให้ภาพชัด\n- ลองอีกมุม`
+                }
+            ])
+            return
+        }
+
+        if (result.confidence < 0.05) {
             await pushMessage(userId, [
                 {
                     type: "text",
@@ -942,6 +1030,7 @@ async function processImage(messageId, userId) {
 
         // ส่งรูปที่วาด bounding box กลับไปให้ user
         const messages = []
+        let savedImageUrl = null
 
         if (result.annotated_image && BASE_URL) {
             try {
@@ -952,21 +1041,27 @@ async function processImage(messageId, userId) {
                 fs.writeFileSync(annotatedPath, imageBuffer)
                 console.log('🖼️ Annotated image saved:', annotatedPath)
 
-                const imageUrl = `${BASE_URL}/public/results/${filename}`
+                savedImageUrl = `${BASE_URL}/public/results/${filename}`
 
                 messages.push({
                     type: "image",
-                    originalContentUrl: imageUrl,
-                    previewImageUrl: imageUrl
+                    originalContentUrl: savedImageUrl,
+                    previewImageUrl: savedImageUrl
                 })
-                console.log('📤 Image URL:', imageUrl)
-
-                // ลบรูปเก่าที่เกิน 30 นาที
-                cleanupOldResults()
+                console.log('📤 Image URL:', savedImageUrl)
             } catch (imgError) {
                 console.error('Error saving annotated image:', imgError.message)
             }
         }
+
+        // 💾 บันทึกผลวิเคราะห์ลง Database (หลังบันทึกรูปแล้ว จะได้ URL ครบ)
+        saveAnalysis(userId, {
+            disease: result.disease,
+            confidence: result.confidence,
+            severity: result.severity,
+            advice: advice,
+            imageUrl: savedImageUrl
+        })
 
         messages.push({
             type: "text",
@@ -1027,9 +1122,41 @@ app.get("/", (req, res) => {
     res.send("LINE Bot is running! ✅")
 })
 
+// =====================
+// API: สถิติรวมของระบบ
+// =====================
+app.get("/api/stats", (req, res) => {
+    const stats = getDashboardStats()
+    if (!stats) {
+        return res.status(500).json({ error: 'Database not available' })
+    }
+    res.json(stats)
+})
+
+// =====================
+// API: ประวัติการใช้งานของผู้ใช้
+// =====================
+app.get("/api/users/:userId/history", (req, res) => {
+    const { userId } = req.params
+    const userStats = getUserStats(userId)
+    if (!userStats) {
+        return res.status(404).json({ error: 'User not found' })
+    }
+    res.json(userStats)
+})
+
 // (ลบ /models และ /test-yolo endpoints ออกเพื่อความปลอดภัย — ใช้ตอน dev เท่านั้น)
 
 // =====================
+// เริ่มต้น Database + Server
+// =====================
+try {
+    initDatabase()
+    log('INFO', '✅ Database ready')
+} catch (error) {
+    log('ERROR', '⚠️ Database failed to initialize — server will run without DB:', error.message)
+}
+
 const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
     log('INFO', `🚀 Webhook running on port ${PORT}`)
@@ -1037,4 +1164,22 @@ app.listen(PORT, () => {
     log('INFO', `🤖 YOLO API URL: ${YOLO_API_URL}`)
     log('INFO', `🔐 Signature verification: ${CHANNEL_SECRET ? 'ENABLED' : 'DISABLED'}`)
     log('INFO', `📊 Rate limit: ${RATE_LIMIT_MAX} req/${RATE_LIMIT_WINDOW / 1000}s per IP`)
+    log('INFO', `🗄️ Database: SQLite (data/rice_farmer.db)`)
 })
+
+// =====================
+// Graceful Shutdown — ปิด Database ก่อนปิด server
+// =====================
+process.on('SIGINT', () => {
+    log('INFO', '🛑 Shutting down...')
+    closeDatabase()
+    process.exit(0)
+})
+
+process.on('SIGTERM', () => {
+    log('INFO', '🛑 Shutting down...')
+    closeDatabase()
+    process.exit(0)
+})
+
+
