@@ -5,11 +5,11 @@ import cv2
 model = YOLO("best.pt")
 
 # 2. ใส่พาธรูปภาพที่คุณต้องการทดสอบ
-image_path = "test14.jpg" 
+image_path = "test111.jpg" 
 
 # 3. สั่งประมวลผล
-# ปรับ conf=0.25 ตามที่คุณตั้งไว้ใน server
-results = model.predict(source=image_path, conf=0.25, save=True)
+# ปรับ conf=0.05 ตามที่คุณตั้งไว้ใน server
+results = model.predict(source=image_path, conf=0.05, save=True)
 
 # 4. แสดงผลลัพธ์ออกมาเป็นข้อความ
 print("\n--- ผลการวิเคราะห์ ---")

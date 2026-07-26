@@ -914,7 +914,7 @@ async function handleEvent(event) {
         // ===== รูปภาพ =====
         if (event.message?.type === "image") {
             await replyMessage(replyToken, [
-                { type: "text", text: "📷 ได้รับรูปแล้ว กำลังวิเคราะห์โรคข้าวด้วย AI..." },
+                { type: "text", text: "📷 ได้รับรูปแล้ว กำลังวิเคราะห์โรคข้าว" },
             ])
 
             processImage(event.message.id, userId).catch(err => {
