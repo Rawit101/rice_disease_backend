@@ -9,9 +9,9 @@ import crypto from "crypto"
 import FormData from "form-data"
 import { fileURLToPath } from "url"
 import {
-    initDatabase, closeDatabase,
+    initDatabase,
     upsertUser, saveAnalysis, saveChatMessage,
-    getDashboardStats, getUserStats
+    getDashboardStats, getUserStats, uploadImage
 } from './database.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -26,13 +26,8 @@ app.use(express.json({
 }))
 
 // =====================
-// โฟลเดอร์เก็บรูปผลลัพธ์ (serve เป็น static files)
+// โฟลเดอร์ static files
 // =====================
-const RESULTS_DIR = path.join(__dirname, 'public', 'results')
-if (!fs.existsSync(RESULTS_DIR)) {
-    fs.mkdirSync(RESULTS_DIR, { recursive: true })
-    console.log('📁 Created results directory:', RESULTS_DIR)
-}
 app.use('/public', express.static(path.join(__dirname, 'public')))
 
 // =====================
@@ -342,7 +337,7 @@ const AI_MODELS = [
 ]
 
 async function callAI(prompt, options = {}) {
-    const { timeout = 30000 } = options
+    const { timeout = 30000, systemPrompt = '' } = options
     let rateLimitCount = 0
     const MAX_RATE_LIMIT_RETRIES = 2  // จำกัดการ retry เมื่อโดน rate limit
 
@@ -350,11 +345,19 @@ async function callAI(prompt, options = {}) {
         try {
             const url = `${MAXPLUS_BASE_URL}/v1/chat/completions`
 
+            // สร้าง messages: ถ้ามี systemPrompt ให้แยกเป็น system + user role
+            // ถ้าไม่มี systemPrompt ให้ส่งเป็น user เหมือนเดิม (backward compatible)
+            const messages = []
+            if (systemPrompt) {
+                messages.push({ role: "system", content: systemPrompt })
+                messages.push({ role: "user", content: prompt })
+            } else {
+                messages.push({ role: "user", content: prompt })
+            }
+
             const body = {
                 model: modelName,
-                messages: [
-                    { role: "user", content: prompt }
-                ],
+                messages,
                 max_tokens: 2048
             }
 
@@ -476,8 +479,8 @@ async function askChatbot(text, userId) {
                 saveSession(userId, { ...session, chatHistory: history.slice(-MAX_HISTORY * 2) })
 
                 // 💾 บันทึกลง Database
-                saveChatMessage(userId, 'user', text)
-                saveChatMessage(userId, 'bot', localReply)
+                await saveChatMessage(userId, 'user', text)
+                await saveChatMessage(userId, 'bot', localReply)
             }
             return localReply
         }
@@ -490,7 +493,18 @@ async function askChatbot(text, userId) {
         if (session) {
             // ข้อมูลผลวิเคราะห์โรค
             if (session.disease) {
-                contextInfo += `\n\nข้อมูลจากการวิเคราะห์ล่าสุดของ user นี้:\n- โรคที่พบ: ${session.disease}\n- ความมั่นใจ: ${session.confidence}%\n- ระดับความรุนแรง: ${session.severity}\n- คำแนะนำที่ให้ไปแล้ว (ห้ามตอบซ้ำเด็ดขาด): ${session.advice}\n\nกฎสำคัญ:\n- ถ้า user ขอวิธีแก้เพิ่มเติม ขอคำแนะนำเพิ่ม หรือถามซ้ำ → ต้องตอบด้วยข้อมูลใหม่ที่ยังไม่เคยให้ เช่น ยาตัวอื่น สารชีวภัณฑ์ วิธีธรรมชาติ การป้องกันระยะยาว พันธุ์ข้าวต้านทาน การจัดการดิน/น้ำ ฯลฯ\n- ห้ามพูดซ้ำคำแนะนำข้างต้นเด็ดขาด ต้องเป็นข้อมูลใหม่ทั้งหมด\n- ถ้า user ถามรายละเอียดเรื่องยา/สาร ให้ลงลึกมากขึ้น เช่น ยี่ห้อ วิธีผสม ช่วงเวลาพ่น ข้อควรระวัง`
+                contextInfo += `\n\n[สำคัญมาก] User นี้เพิ่งส่งรูปข้าวมาวิเคราะห์ ผลที่ได้คือ:
+- โรคที่พบ: ${session.disease}
+- ความมั่นใจ: ${session.confidence}%
+- ระดับความรุนแรง: ${session.severity}
+- คำแนะนำที่ให้ไปแล้ว: ${session.advice}
+
+กฎสำคัญที่ต้องทำตามเสมอ:
+1. ถ้า user ถามอะไรก็ตามเกี่ยวกับโรค/วิธีแก้/ยา/การรักษา → ให้ถือว่าถามเกี่ยวกับ "${session.disease}" ที่เพิ่งวิเคราะห์ได้ ตอบทันทีเลย
+2. ห้ามถามกลับว่า "คุณถามเรื่องโรคอะไร" หรือ "ใช่ไหมครับ" เด็ดขาด ให้ตอบเลยทันที
+3. ถ้า user ขอวิธีแก้เพิ่มเติม/ถามซ้ำ → ตอบด้วยข้อมูลใหม่ เช่น ยาตัวอื่น สารชีวภัณฑ์ วิธีธรรมชาติ พันธุ์ข้าวต้านทาน
+4. ห้ามตอบซ้ำคำแนะนำที่ให้ไปแล้วข้างต้น
+5. ถ้า user ถามรายละเอียดยา/สาร ให้ลงลึก เช่น ยี่ห้อ วิธีผสม ช่วงเวลาพ่น ข้อควรระวัง`
             }
 
             // ประวัติสนทนา
@@ -498,11 +512,11 @@ async function askChatbot(text, userId) {
                 const historyText = session.chatHistory
                     .map(h => h.role === 'user' ? `User: ${h.text}` : `ไอนาย: ${h.text}`)
                     .join('\n')
-                contextInfo += `\n\nประวัติสนทนาล่าสุด:\n${historyText}\n\nกฎ: ใช้ประวัตินี้เป็น context ในการตอบ อ้างอิงสิ่งที่คุยกันไปแล้ว ไม่ต้องทักทายซ้ำถ้าเคยทักทายไปแล้ว`
+                contextInfo += `\n\nประวัติสนทนาล่าสุด:\n${historyText}\n\nกฎ: ใช้ประวัตินี้เป็น context ตอบต่อเนื่องจากบทสนทนาเดิม ไม่ต้องทักทายซ้ำ ไม่ต้องถามยืนยัน ตอบเลย`
             }
         }
 
-        const prompt = `คุณคือผู้เชี่ยวชาญด้านโรคข้าวและการดูแลข้าวโดยเฉพาะ ชื่อ "ไอนาย" ทำหน้าที่ให้คำปรึกษาเกษตรกรชาวนาไทย อ้างอิงองค์ความรู้จากกรมการข้าว (rkb.ricethailand.go.th) ห้ามตอบคำถามที่ไม่เกี่ยวข้องกับข้าวเด็ดขาด
+        const systemPrompt = `คุณคือผู้เชี่ยวชาญด้านโรคข้าวและการดูแลข้าวโดยเฉพาะ ชื่อ "ไอนาย" ทำหน้าที่ให้คำปรึกษาเกษตรกรชาวนาไทย อ้างอิงองค์ความรู้จากกรมการข้าว (rkb.ricethailand.go.th) ห้ามตอบคำถามที่ไม่เกี่ยวข้องกับข้าวเด็ดขาด
 
 ข้อมูลอ้างอิงจากไฟล์ local ที่ scrape จาก Rice Knowledge Bank:
 ${knowledgeContext || 'ไม่พบข้อมูลอ้างอิง ให้ตอบจากความรู้ของคุณเองแบบผู้เชี่ยวชาญ ห้ามบอกว่าไม่มีข้อมูลหรือหาไม่พบ ให้ตอบคำถามไปเลย'}
@@ -519,11 +533,9 @@ ${knowledgeContext || 'ไม่พบข้อมูลอ้างอิง �
 - ใช้ - นำหน้า bullet point
 - สั้นกระชับ ไม่เกิน 120 คำ
 - ภาษาง่ายๆ เป็นกันเอง
-- ระบุชื่อสาร อัตราส่วน วิธีใช้ ให้ชาวนาใช้ได้จริง${contextInfo}
+- ระบุชื่อสาร อัตราส่วน วิธีใช้ ให้ชาวนาใช้ได้จริง${contextInfo}`
 
-คำถาม: ${text}`
-
-        const fullText = await callAI(prompt)
+        const fullText = await callAI(text, { systemPrompt })
 
         // บันทึกประวัติสนทนา
         if (userId) {
@@ -535,8 +547,8 @@ ${knowledgeContext || 'ไม่พบข้อมูลอ้างอิง �
             saveSession(userId, { ...currentSession, chatHistory: history.slice(-MAX_HISTORY * 2) })
 
             // 💾 บันทึกลง Database
-            saveChatMessage(userId, 'user', text)
-            saveChatMessage(userId, 'bot', fullText)
+            await saveChatMessage(userId, 'user', text)
+            await saveChatMessage(userId, 'bot', fullText)
         }
 
         // จำกัดความยาวไม่เกิน 4500 ตัวอักษร (LINE รองรับ 5000 เผื่อ buffer)
@@ -637,9 +649,7 @@ async function askDiseaseAdvice(disease, severity) {
         return fallbackAdvice['ไม่พบโรค (Healthy)']
     }
 
-    const prompt = `คุณคือผู้เชี่ยวชาญด้านโรคข้าว
-ตรวจพบ: ${disease}
-ระดับ: ${severity}
+    const systemPrompt = `คุณคือผู้เชี่ยวชาญด้านโรคข้าว ทำหน้าที่ให้คำแนะนำเกษตรกรชาวนาไทยเกี่ยวกับโรคข้าวที่ตรวจพบ
 
 ตอบตาม format นี้เท่านั้น ห้ามใช้ ** หรือ markdown:
 
@@ -655,8 +665,10 @@ async function askDiseaseAdvice(disease, severity) {
 
 รวมไม่เกิน 120 คำ ภาษาง่ายๆ เป็นกันเอง ให้ข้อมูลที่ชาวนาใช้ได้จริง`
 
+    const userMessage = `ตรวจพบ: ${disease}\nระดับ: ${severity}`
+
     try {
-        return await callAI(prompt)
+        return await callAI(userMessage, { systemPrompt })
     } catch (error) {
         log('ERROR', 'Disease advice error:', error.message)
         log('INFO', '📝 Using fallback advice')
@@ -874,10 +886,10 @@ async function handleEvent(event) {
                         timeout: 5000
                     }
                 )
-                upsertUser(userId, profileRes.data?.displayName || null)
+                await upsertUser(userId, profileRes.data?.displayName || null)
             } catch {
                 // ดึง profile ไม่ได้ก็ไม่เป็นไร บันทึกแค่ userId
-                upsertUser(userId)
+                await upsertUser(userId)
             }
         }
 
@@ -971,7 +983,6 @@ app.post("/webhook", async (req, res) => {
 // =====================
 async function processImage(messageId, userId) {
     let imagePath = null
-    let annotatedPath = null
 
     try {
         imagePath = await getImageFromLine(messageId)
@@ -1032,30 +1043,35 @@ async function processImage(messageId, userId) {
         const messages = []
         let savedImageUrl = null
 
-        if (result.annotated_image && BASE_URL) {
+        if (result.annotated_image) {
+            console.log('🖼️ annotated_image received, length:', result.annotated_image.length)
             try {
-                // บันทึกรูป annotated เป็นไฟล์
+                // อัปโหลดรูป annotated ขึ้น Supabase Storage
                 const filename = `result_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.jpg`
-                annotatedPath = path.join(RESULTS_DIR, filename)
                 const imageBuffer = Buffer.from(result.annotated_image, 'base64')
-                fs.writeFileSync(annotatedPath, imageBuffer)
-                console.log('🖼️ Annotated image saved:', annotatedPath)
+                console.log('🖼️ Image buffer size:', imageBuffer.length, 'bytes')
+                savedImageUrl = await uploadImage(imageBuffer, filename)
+                console.log('🖼️ Upload result URL:', savedImageUrl)
 
-                savedImageUrl = `${BASE_URL}/public/results/${filename}`
-
-                messages.push({
-                    type: "image",
-                    originalContentUrl: savedImageUrl,
-                    previewImageUrl: savedImageUrl
-                })
-                console.log('📤 Image URL:', savedImageUrl)
+                if (savedImageUrl) {
+                    messages.push({
+                        type: "image",
+                        originalContentUrl: savedImageUrl,
+                        previewImageUrl: savedImageUrl
+                    })
+                    console.log('📤 Image URL:', savedImageUrl)
+                } else {
+                    console.error('❌ Upload returned null - image not sent to LINE')
+                }
             } catch (imgError) {
-                console.error('Error saving annotated image:', imgError.message)
+                console.error('Error uploading annotated image:', imgError.message)
             }
+        } else {
+            console.log('⚠️ No annotated_image in YOLO result')
         }
 
         // 💾 บันทึกผลวิเคราะห์ลง Database (หลังบันทึกรูปแล้ว จะได้ URL ครบ)
-        saveAnalysis(userId, {
+        await saveAnalysis(userId, {
             disease: result.disease,
             confidence: result.confidence,
             severity: result.severity,
@@ -1088,32 +1104,7 @@ async function processImage(messageId, userId) {
     }
 }
 
-// =====================
-// ลบรูปผลลัพธ์เก่าที่เกิน 30 นาที
-// =====================
-function cleanupOldResults() {
-    try {
-        const files = fs.readdirSync(RESULTS_DIR)
-        const now = Date.now()
-        let deleted = 0
-
-        for (const file of files) {
-            const filePath = path.join(RESULTS_DIR, file)
-            const stats = fs.statSync(filePath)
-            // ลบไฟล์ที่เก่ากว่า 30 นาที
-            if (now - stats.mtimeMs > 30 * 60 * 1000) {
-                fs.unlinkSync(filePath)
-                deleted++
-            }
-        }
-
-        if (deleted > 0) {
-            console.log(`🗑️ Cleaned up ${deleted} old result images`)
-        }
-    } catch (e) {
-        console.log('Cleanup error:', e.message)
-    }
-}
+// (cleanupOldResults ลบออกแล้ว — รูปเก็บถาวรบน Supabase Storage)
 
 // =====================
 // Health check
@@ -1125,8 +1116,8 @@ app.get("/", (req, res) => {
 // =====================
 // API: สถิติรวมของระบบ
 // =====================
-app.get("/api/stats", (req, res) => {
-    const stats = getDashboardStats()
+app.get("/api/stats", async (req, res) => {
+    const stats = await getDashboardStats()
     if (!stats) {
         return res.status(500).json({ error: 'Database not available' })
     }
@@ -1136,9 +1127,9 @@ app.get("/api/stats", (req, res) => {
 // =====================
 // API: ประวัติการใช้งานของผู้ใช้
 // =====================
-app.get("/api/users/:userId/history", (req, res) => {
+app.get("/api/users/:userId/history", async (req, res) => {
     const { userId } = req.params
-    const userStats = getUserStats(userId)
+    const userStats = await getUserStats(userId)
     if (!userStats) {
         return res.status(404).json({ error: 'User not found' })
     }
@@ -1150,35 +1141,35 @@ app.get("/api/users/:userId/history", (req, res) => {
 // =====================
 // เริ่มต้น Database + Server
 // =====================
-try {
-    initDatabase()
-    log('INFO', '✅ Database ready')
-} catch (error) {
-    log('ERROR', '⚠️ Database failed to initialize — server will run without DB:', error.message)
-}
+;(async () => {
+    try {
+        await initDatabase()
+        log('INFO', '✅ Database ready')
+    } catch (error) {
+        log('ERROR', '⚠️ Database failed to initialize — server will run without DB:', error.message)
+    }
 
-const PORT = process.env.PORT || 3000
-app.listen(PORT, () => {
-    log('INFO', `🚀 Webhook running on port ${PORT}`)
-    log('INFO', `📍 Webhook URL: http://localhost:${PORT}/webhook`)
-    log('INFO', `🤖 YOLO API URL: ${YOLO_API_URL}`)
-    log('INFO', `🔐 Signature verification: ${CHANNEL_SECRET ? 'ENABLED' : 'DISABLED'}`)
-    log('INFO', `📊 Rate limit: ${RATE_LIMIT_MAX} req/${RATE_LIMIT_WINDOW / 1000}s per IP`)
-    log('INFO', `🗄️ Database: SQLite (data/rice_farmer.db)`)
-})
+    const PORT = process.env.PORT || 3000
+    app.listen(PORT, () => {
+        log('INFO', `🚀 Webhook running on port ${PORT}`)
+        log('INFO', `📍 Webhook URL: http://localhost:${PORT}/webhook`)
+        log('INFO', `🤖 YOLO API URL: ${YOLO_API_URL}`)
+        log('INFO', `🔐 Signature verification: ${CHANNEL_SECRET ? 'ENABLED' : 'DISABLED'}`)
+        log('INFO', `📊 Rate limit: ${RATE_LIMIT_MAX} req/${RATE_LIMIT_WINDOW / 1000}s per IP`)
+        log('INFO', `🗄️ Database: Supabase (PostgreSQL)`)
+    })
+})()
 
 // =====================
-// Graceful Shutdown — ปิด Database ก่อนปิด server
+// Graceful Shutdown
 // =====================
 process.on('SIGINT', () => {
     log('INFO', '🛑 Shutting down...')
-    closeDatabase()
     process.exit(0)
 })
 
 process.on('SIGTERM', () => {
     log('INFO', '🛑 Shutting down...')
-    closeDatabase()
     process.exit(0)
 })
 

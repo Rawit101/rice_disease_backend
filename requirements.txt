@@ -1,15 +1,11 @@
-
-# === YOLO Server (yolo_server.py) ===
-flask==3.0.0  //เป็นWeb-Framework-ขนาดเล็กและรวดเร็วของ-Python-ใช้สำหรับสร้าง-API-Server-เพื่อรอรับ-Request-(เช่นรับข้อมูลหรือรูปภาพที่อัปโหลดเข้ามา)-แล้วส่งผลลัพธ์กลับไป
-flask-cors==4.0.0  //เป็นLibraryสำหรับจัดการCORS(Cross-Origin-Resource-Sharing)-ใน-Flask
-ultralytics>=8.4.100  //เป็นLibraryสำหรับการใช้งานYOLOในการตรวจจับวัตถุ (ต้องใช้เวอร์ชันใหม่สำหรับ Polygon model)
-opencv-python==4.8.1.78  //เป็นLibraryสำหรับประมวลผลภาพและวิดีโอ
-numpy==1.24.3  //เป็นLibraryสำหรับการทำงานกับArrayและMatrix
-Pillow==10.1.0  //เป็นLibraryสำหรับประมวลผลภาพ
-torch==2.1.0  //เป็นLibraryสำหรับการทำงานกับDeepLearningและNeuralNetworks
-torchvision==0.16.0  //เป็นLibraryสำหรับการทำงานกับComputerVisionและImageProcessing
-
-# === RAG Server (rag_server.py) ===
-chromadb>=0.4.0  //Vector-Database-สำหรับเก็บและค้นหา-Embeddings
-google-generativeai>=0.5.0  //Gemini-API-สำหรับสร้าง-Embeddings-และ-Generate-คำตอบ
-python-dotenv>=1.0.0  //อ่านค่าจากไฟล์-.env
+flask==3.0.0  
+flask-cors==4.0.0  
+ultralytics>=8.4.100  
+opencv-python==4.8.1.78  
+numpy==1.24.3  
+Pillow==10.1.0  
+torch==2.1.0  
+torchvision==0.16.0  
+chromadb>=0.4.0  
+google-generativeai>=0.5.0  
+python-dotenv>=1.0.0  
