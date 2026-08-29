@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: rice-disease-bot
+    runtime: node
+    buildCommand: npm install
+    startCommand: node index.js
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LINE_TOKEN
+        sync: false
+      - key: CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: CHANNEL_SECRET
+        sync: false
+      - key: MAXPLUS_API_KEY
+        sync: false
+      - key: MAXPLUS_BASE_URL
+        sync: false
+      - key: YOLO_API_URL
+        sync: false
+      - key: RAG_API_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: BASE_URL
+        sync: false

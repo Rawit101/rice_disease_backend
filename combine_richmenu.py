@@ -1,25 +1,25 @@
 """
-สคริปต์รวม 3 รูปเป็น Rich Menu ขนาด 2500x1686 (3 แถวแนวตั้ง)
+สคริปต์รวม 2 รูปเป็น Rich Menu ขนาด 2500x843 (แบบกะทัดรัด 2 ช่อง ซ้าย-ขวา)
 วิธีใช้: python combine_richmenu.py
 
-ต้องวางรูป 3 ไฟล์ไว้ในโฟลเดอร์เดียวกัน:
-  - menu1.jpg หรือ .png  → องค์ความรู้เรื่องข้าว (บน)
-  - menu2.jpg หรือ .png  → เลือกรูปภาพ (กลาง)
-  - menu3.jpg หรือ .png  → โรคข้าว (ล่าง)
+ต้องวางรูป 2 ไฟล์ไว้ในโฟลเดอร์เดียวกัน:
+  - menu1.jpg หรือ .png  → เลือกรูปภาพ (ช่องซ้าย)
+  - menu2.jpg หรือ .png  → กรมการข้าว (ช่องขวา)
 
-ผลลัพธ์: richmenu.jpg (2500x1686, < 1MB)
+ผลลัพธ์: richmenu.jpg (2500x843, < 1MB)
 """
 
 from PIL import Image
 import os
 import sys
 
-# ขนาด Rich Menu เต็มจอ
+# ขนาด Rich Menu แบบกะทัดรัด (Compact)
 MENU_WIDTH = 2500
-MENU_HEIGHT = 1686
+MENU_HEIGHT = 843
 
-# แบ่งเป็น 3 แถว
-ROW_HEIGHT = MENU_HEIGHT // 3  # 562
+# แบ่งเป็น 2 ช่อง ซ้าย (1 ใน 3) - ขวา (2 ใน 3) ตามแทมเพลต LINE
+COL1_WIDTH = 833   # ช่องซ้าย A
+COL2_WIDTH = 1667  # ช่องขวา B
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_FILE = os.path.join(BASE_DIR, 'richmenu.jpg')
@@ -56,41 +56,36 @@ def resize_and_crop(img, target_width, target_height):
     return img_resized.crop((left, top, right, bottom))
 
 def main():
-    print("🖼️  สร้าง Rich Menu Image (2500x1686 - 3 แถวแนวตั้ง)")
+    print("🖼️  สร้าง Rich Menu Image (2500x843 - 2 ช่อง ซ้าย-ขวา)")
     print("=" * 45)
 
     menu1_path = find_file('menu1')
     menu2_path = find_file('menu2')
-    menu3_path = find_file('menu3')
 
     missing = []
-    if not menu1_path: missing.append("menu1.jpg")
-    if not menu2_path: missing.append("menu2.jpg")
-    if not menu3_path: missing.append("menu3.jpg")
+    if not menu1_path: missing.append("menu1.jpg หรือ menu1.png (ช่องซ้าย: เลือกรูปภาพ)")
+    if not menu2_path: missing.append("menu2.jpg หรือ menu2.png (ช่องขวา: กรมการข้าว)")
 
     if missing:
         print("❌ ไม่พบไฟล์รูปต่อไปนี้:")
         for f in missing:
             print(f"   - {f}")
-        print(f"\n📂 กรุณานำรูปที่เซฟมาวางไว้ที่: {BASE_DIR}")
+        print(f"\n📂 กรุณานำรูปมาวางไว้ที่: {BASE_DIR}")
         sys.exit(1)
 
     print("📂 โหลดรูป...")
     img1 = Image.open(menu1_path).convert('RGB')
     img2 = Image.open(menu2_path).convert('RGB')
-    img3 = Image.open(menu3_path).convert('RGB')
 
     print("\n🔧 ปรับขนาด...")
-    part1 = resize_and_crop(img1, MENU_WIDTH, ROW_HEIGHT)
-    part2 = resize_and_crop(img2, MENU_WIDTH, ROW_HEIGHT)
-    part3 = resize_and_crop(img3, MENU_WIDTH, ROW_HEIGHT)
+    part1 = resize_and_crop(img1, COL1_WIDTH, MENU_HEIGHT)
+    part2 = resize_and_crop(img2, COL2_WIDTH, MENU_HEIGHT)
 
     print("\n🎨 รวมรูป...")
     canvas = Image.new('RGB', (MENU_WIDTH, MENU_HEIGHT), color=(255, 255, 255))
     
     canvas.paste(part1, (0, 0))
-    canvas.paste(part2, (0, ROW_HEIGHT))
-    canvas.paste(part3, (0, ROW_HEIGHT * 2))
+    canvas.paste(part2, (COL1_WIDTH, 0))
 
     print("\n💾 บันทึก...")
     quality = 95
@@ -115,3 +110,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
