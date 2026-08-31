@@ -1,4 +1,5 @@
 services:
+  # Service 1: LINE Bot (Node.js)
   - type: web
     name: rice-disease-bot
     runtime: node
@@ -18,10 +19,6 @@ services:
         sync: false
       - key: MAXPLUS_BASE_URL
         sync: false
-      - key: YOLO_API_URL
-        sync: false
-      - key: RAG_API_URL
-        sync: false
       - key: GEMINI_API_KEY
         sync: false
       - key: SUPABASE_URL
@@ -29,4 +26,26 @@ services:
       - key: SUPABASE_ANON_KEY
         sync: false
       - key: BASE_URL
+        sync: false
+      # ชี้ไปที่ Python API service บน Render
+      - key: YOLO_API_URL
+        sync: false
+      - key: RAG_API_URL
+        sync: false
+
+  # Service 2: YOLO + RAG API (Python ONNX)
+  - type: web
+    name: rice-disease-api
+    runtime: docker
+    dockerfilePath: ./render-api/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: PORT
+        value: "5000"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: MAXPLUS_API_KEY
+        sync: false
+      - key: MAXPLUS_BASE_URL
         sync: false
