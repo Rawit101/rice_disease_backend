@@ -29,8 +29,20 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 import chromadb
-from google import genai
 from dotenv import load_dotenv
+
+# Safe import for Gemini
+try:
+    from google import genai
+    USE_NEW_GENAI = True
+except Exception:
+    try:
+        import google.generativeai as genai
+        USE_NEW_GENAI = False
+    except Exception as e:
+        genai = None
+        USE_NEW_GENAI = False
+        print(f"⚠️ Warning: Could not import genai: {e}")
 
 load_dotenv(os.path.join(ROOT_DIR, '.env'))
 
@@ -79,16 +91,20 @@ COLLECTION_NAME = 'rice_diseases'
 EMBEDDING_MODEL = 'gemini-embedding-001'
 TOP_K = 3
 
-if GEMINI_API_KEY:
+if GEMINI_API_KEY and genai:
     try:
-        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        if USE_NEW_GENAI:
+            gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        else:
+            genai.configure(api_key=GEMINI_API_KEY)
+            gemini_client = genai
         chroma_client = chromadb.PersistentClient(path=CHROMA_DIR)
         collection = chroma_client.get_collection(name=COLLECTION_NAME)
         print(f"✅ ChromaDB loaded: {collection.count()} chunks in '{COLLECTION_NAME}'")
     except Exception as e:
         print(f"⚠️ ChromaDB not loaded: {e}")
 else:
-    print("⚠️ GEMINI_API_KEY not set — RAG endpoints disabled")
+    print("⚠️ GEMINI_API_KEY not set or genai unavailable — RAG endpoints disabled")
 
 
 # =====================
@@ -191,12 +207,22 @@ def draw_annotations(img, predictions):
 # =====================
 def create_query_embedding(text):
     """สร้าง embedding สำหรับคำถาม"""
-    result = gemini_client.models.embed_content(
-        model=EMBEDDING_MODEL,
-        contents=text,
-        config={'task_type': 'RETRIEVAL_QUERY'}
-    )
-    return result.embeddings[0].values
+    if USE_NEW_GENAI:
+        result = gemini_client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=text,
+            config={'task_type': 'RETRIEVAL_QUERY'}
+        )
+        return result.embeddings[0].values
+    else:
+        # Fallback to google.generativeai
+        model_name = f"models/{EMBEDDING_MODEL}" if not EMBEDDING_MODEL.startswith("models/") else EMBEDDING_MODEL
+        result = genai.embed_content(
+            model=model_name,
+            content=text,
+            task_type="retrieval_query"
+        )
+        return result['embedding']
 
 
 def search_knowledge(question, disease_hint='', top_k=TOP_K):
