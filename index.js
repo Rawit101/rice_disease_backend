@@ -728,7 +728,7 @@ async function analyzeRiceDiseaseWithYOLO(imagePath) {
             headers: {
                 ...formData.getHeaders()
             },
-            timeout: 30000,
+            timeout: 90000, // เพิ่ม timeout เป็น 90 วินาที รองรับ Render free tier cold start
             maxContentLength: 50 * 1024 * 1024,
             maxBodyLength: 50 * 1024 * 1024
         })
