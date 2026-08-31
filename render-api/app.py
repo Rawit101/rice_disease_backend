@@ -60,10 +60,17 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 MODEL_PATH = os.path.join(ROOT_DIR, "best.onnx")
 CLASS_NAMES = {}
 session = None
-input_name = None
+# Limit OpenCV threads for cloud container
+cv2.setNumThreads(1)
 
 try:
-    session = ort.InferenceSession(MODEL_PATH, providers=['CPUExecutionProvider'])
+    opts = ort.SessionOptions()
+    opts.intra_op_num_threads = 1
+    opts.inter_op_num_threads = 1
+    opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+    session = ort.InferenceSession(MODEL_PATH, sess_options=opts, providers=['CPUExecutionProvider'])
     input_name = session.get_inputs()[0].name
 
     metadata = session.get_modelmeta().custom_metadata_map
@@ -317,12 +324,19 @@ def predict():
         except Exception as e:
             return jsonify({"error": "Invalid image", "message": f"Cannot decode image: {str(e)}"}), 400
 
+        t0 = time.time()
         blob, orig_w, orig_h, scale, pad_left, pad_top = preprocess_image(pil_img)
+        t_prep = time.time()
+        
         outputs = session.run(None, {input_name: blob})
+        t_infer = time.time()
+        
         predictions = postprocess_detections(
             outputs, orig_w, orig_h, scale, pad_left, pad_top, conf_threshold=0.05
         )
+        t_post = time.time()
 
+        print(f"⏱️ Prep: {int((t_prep-t0)*1000)}ms | Infer: {int((t_infer-t_prep)*1000)}ms | Post: {int((t_post-t_infer)*1000)}ms")
         print(f"✅ Found {len(predictions)} predictions")
 
         annotated_image_base64 = None
@@ -330,7 +344,7 @@ def predict():
             img_np = np.array(pil_img)
             img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
             annotated_img = draw_annotations(img_bgr, predictions)
-            _, buffer = cv2.imencode('.jpg', annotated_img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            _, buffer = cv2.imencode('.jpg', annotated_img, [cv2.IMWRITE_JPEG_QUALITY, 80])
             annotated_image_base64 = base64.b64encode(buffer).decode('utf-8')
 
         return jsonify({
