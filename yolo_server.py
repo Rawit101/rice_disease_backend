@@ -81,7 +81,7 @@ def predict():
             }), 400
 
         # ทำนายด้วย YOLO แบบเดียวกับ Kaggle
-        results = model.predict(pil_img, conf=0.05)
+        results = model.predict(pil_img, conf=0.1)
 
         predictions = []
 

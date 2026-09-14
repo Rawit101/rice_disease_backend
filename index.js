@@ -346,8 +346,8 @@ setInterval(() => {
 // MaxPlus AI Helper — เรียก Claude/GPT ผ่าน OpenAI-compatible endpoint
 // =====================
 const AI_MODELS = [
-    'claude-haiku-4-5-20251001',   // เร็ว ประหยัด — ตัวหลัก
-    'claude-sonnet-4-6'             // สมดุลคุณภาพ/ความเร็ว — fallback
+    'gemini-3.7-flash',   // เร็ว ประหยัด — ตัวหลัก
+    'gemini-3.6-flash'             // สมดุลคุณภาพ/ความเร็ว — fallback
 ]
 
 async function callAI(prompt, options = {}) {

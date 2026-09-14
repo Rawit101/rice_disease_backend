@@ -186,7 +186,7 @@ def predict():
         except Exception as e:
             return jsonify({"error": "Invalid image", "message": f"Cannot decode image: {str(e)}"}), 400
 
-        results = model.predict(pil_img, conf=0.05)
+        results = model.predict(pil_img, conf=0.25)
 
         predictions = []
         for result in results:

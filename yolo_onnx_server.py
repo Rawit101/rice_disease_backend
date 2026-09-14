@@ -95,7 +95,7 @@ def preprocess_image(pil_img, target_size=640):
     return blob, orig_w, orig_h, scale, left, top
 
 
-def postprocess_detections(output, orig_w, orig_h, scale, pad_left, pad_top, conf_threshold=0.05):
+def postprocess_detections(output, orig_w, orig_h, scale, pad_left, pad_top, conf_threshold=0.25):
     """
     Postprocess YOLO ONNX output (NMS format) เป็น detections
     Output shape: (1, 300, 38) — ultralytics export ทำ NMS ให้แล้ว
@@ -238,7 +238,7 @@ def predict():
 
         # Postprocess
         predictions = postprocess_detections(
-            outputs, orig_w, orig_h, scale, pad_left, pad_top, conf_threshold=0.05
+            outputs, orig_w, orig_h, scale, pad_left, pad_top, conf_threshold=0.25
         )
 
         print(f"✅ Found {len(predictions)} predictions")
