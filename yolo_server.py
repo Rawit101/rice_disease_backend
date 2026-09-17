@@ -135,6 +135,7 @@ def get_classes():
     })
 
 if __name__ == '__main__':
+    port = int(os.environ.get('YOLO_PORT', 5002))
     print("=" * 50)
     print("🚀 Starting YOLO API Server")
     print("=" * 50)
@@ -143,4 +144,4 @@ if __name__ == '__main__':
     if model:
         print(f"📋 Classes: {model.names}")
     print("=" * 50)
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)

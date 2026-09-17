@@ -66,7 +66,7 @@
                       │    ┌────▼────┐  ┌────▼────────────┐          │
                       │    │  YOLO   │  │  RAG Server     │          │
                       │    │  Server │  │  (rag_server.py) │          │
-                      │    │  :5000  │  │  :5001           │          │
+                      │    │  :5002  │  │  :5001           │          │
                       │    └────┬────┘  └────┬────────────┘          │
                       │         │            │                       │
                       │    ┌────▼────┐  ┌────▼────┐  ┌──────────┐   │
@@ -198,6 +198,9 @@ GEMINI_API_KEY="your_gemini_api_key"
 # Public server URL (leave empty for ngrok auto-detection)
 BASE_URL=""
 
+# YOLO Server URL
+YOLO_API_URL="http://localhost:5002/predict"
+
 # RAG Server URL
 RAG_API_URL="http://localhost:5001/search"
 ```
@@ -216,7 +219,7 @@ RAG_API_URL="http://localhost:5001/search"
 
 You need to run **3 servers** simultaneously (open separate terminals for each):
 
-### Terminal 1 — YOLO Server (port 5000)
+### Terminal 1 — YOLO Server (port 5002)
 
 ```bash
 # Activate Python venv first
@@ -266,7 +269,7 @@ ngrok http 3000
 | `GET` | `/api/stats` | System-wide statistics (users, analyses, top diseases) |
 | `GET` | `/api/users/:userId/history` | Usage history for a specific user |
 
-### YOLO Server (port 5000)
+### YOLO Server (port 5002)
 
 | Method | Path | Description |
 |--------|------|-------------|

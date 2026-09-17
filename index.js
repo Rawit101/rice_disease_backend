@@ -37,7 +37,7 @@ const LINE_TOKEN = process.env.LINE_TOKEN || process.env.CHANNEL_ACCESS_TOKEN
 const CHANNEL_SECRET = process.env.CHANNEL_SECRET
 const MAXPLUS_API_KEY = process.env.MAXPLUS_API_KEY
 const MAXPLUS_BASE_URL = process.env.MAXPLUS_BASE_URL || 'https://api.maxplus-ai.cc'
-const YOLO_API_URL = process.env.YOLO_API_URL || "http://localhost:5000/predict"
+const YOLO_API_URL = process.env.YOLO_API_URL || "http://localhost:5002/predict"
 const RAG_API_URL = process.env.RAG_API_URL || "http://localhost:5001/search"
 let BASE_URL = process.env.BASE_URL || ""  // auto-detect จาก ngrok webhook request
 
@@ -1210,5 +1210,4 @@ process.on('SIGTERM', () => {
     log('INFO', '🛑 Shutting down...')
     process.exit(0)
 })
-
 
