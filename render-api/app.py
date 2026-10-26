@@ -1,11 +1,10 @@
 """
-app.py - Combined YOLO (ONNX) + RAG Server สำหรับ Render Deploy
-รวม yolo_onnx_server.py + rag_server.py เป็น API เดียว
+app.py - YOLO best.pt API for Render; legacy RAG is opt-in only
 
 Endpoints:
-    POST /predict  - YOLO rice disease detection (ONNX)
-    POST /search   - RAG semantic search
-    POST /query    - RAG search + AI answer
+    POST /predict  - YOLO rice disease detection (best.pt)
+    POST /search   - Optional legacy RAG semantic search (disabled by default)
+    POST /query    - Optional legacy AI endpoint (disabled by default)
     GET  /health   - Health check
     GET  /         - Status page
 """
@@ -15,6 +14,7 @@ import sys
 import io
 import time
 import base64
+import math
 
 # Fix Unicode encoding
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
@@ -28,21 +28,7 @@ from PIL import Image
 import cv2
 import numpy as np
 from ultralytics import YOLO
-import chromadb
 from dotenv import load_dotenv
-
-# Safe import for Gemini
-try:
-    from google import genai
-    USE_NEW_GENAI = True
-except Exception:
-    try:
-        import google.generativeai as genai
-        USE_NEW_GENAI = False
-    except Exception as e:
-        genai = None
-        USE_NEW_GENAI = False
-        print(f"⚠️ Warning: Could not import genai: {e}")
 
 load_dotenv(os.path.join(ROOT_DIR, '.env'))
 
@@ -53,6 +39,12 @@ app = Flask(__name__)
 CORS(app)
 
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+
+# Match the existing production best.pt inference threshold and the LINE client.
+YOLO_CONFIDENCE_THRESHOLD = float(os.getenv('YOLO_CONFIDENCE_THRESHOLD', '0.25'))
+if not math.isfinite(YOLO_CONFIDENCE_THRESHOLD) or not 0 < YOLO_CONFIDENCE_THRESHOLD <= 1:
+    raise ValueError('YOLO_CONFIDENCE_THRESHOLD must be greater than 0 and at most 1')
+
 
 # =====================
 # YOLO Model (.pt)
@@ -70,32 +62,36 @@ except Exception as e:
 # =====================
 # RAG / ChromaDB
 # =====================
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-MAXPLUS_API_KEY = os.getenv('MAXPLUS_API_KEY')
-MAXPLUS_BASE_URL = os.getenv('MAXPLUS_BASE_URL', 'https://api.maxplus-ai.cc')
-
+# The LINE deployment is detection-only. Legacy standalone API consumers must
+# explicitly enable RAG and install its optional dependencies; stale keys alone
+# never initialize an AI client or open the knowledge database.
+ENABLE_RAG = os.getenv('ENABLE_RAG', 'false').lower() == 'true'
+GEMINI_API_KEY = None
+MAXPLUS_API_KEY = None
+MAXPLUS_BASE_URL = None
+genai = None
+USE_NEW_GENAI = False
 gemini_client = None
 collection = None
-
 CHROMA_DIR = os.path.join(ROOT_DIR, 'chroma_db')
 COLLECTION_NAME = 'rice_diseases'
 EMBEDDING_MODEL = 'gemini-embedding-001'
 TOP_K = 3
 
-if GEMINI_API_KEY and genai:
+if ENABLE_RAG:
     try:
-        if USE_NEW_GENAI:
+        import chromadb
+        from google import genai
+        USE_NEW_GENAI = True
+        GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+        MAXPLUS_API_KEY = os.getenv('MAXPLUS_API_KEY')
+        MAXPLUS_BASE_URL = os.getenv('MAXPLUS_BASE_URL', 'https://api.maxplus-ai.cc')
+        if GEMINI_API_KEY:
             gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-        else:
-            genai.configure(api_key=GEMINI_API_KEY)
-            gemini_client = genai
-        chroma_client = chromadb.PersistentClient(path=CHROMA_DIR)
-        collection = chroma_client.get_collection(name=COLLECTION_NAME)
-        print(f"✅ ChromaDB loaded: {collection.count()} chunks in '{COLLECTION_NAME}'")
-    except Exception as e:
-        print(f"⚠️ ChromaDB not loaded: {e}")
-else:
-    print("⚠️ GEMINI_API_KEY not set or genai unavailable — RAG endpoints disabled")
+            chroma_client = chromadb.PersistentClient(path=CHROMA_DIR)
+            collection = chroma_client.get_collection(name=COLLECTION_NAME)
+    except Exception:
+        print('Optional legacy RAG initialization failed')
 
 
 # =====================
@@ -134,6 +130,14 @@ def predict():
         return jsonify({"error": "No image file provided", "message": "Please send image with key 'image'"}), 400
 
     try:
+        try:
+            threshold = float(request.form.get('confidence_threshold', YOLO_CONFIDENCE_THRESHOLD))
+            if not math.isfinite(threshold) or not 0 < threshold <= 1:
+                raise ValueError('Invalid threshold')
+        except (TypeError, ValueError):
+            return jsonify({"error": "confidence_threshold must be greater than 0 and at most 1"}), 400
+        include_annotated_image = request.form.get('include_annotated_image', 'true').lower() != 'false'
+
         image_file = request.files['image']
         image_bytes = image_file.read()
 
@@ -151,7 +155,7 @@ def predict():
             return jsonify({"error": "Invalid image", "message": f"Cannot decode image: {str(e)}"}), 400
 
         # Predict with YOLO (.pt) matching Kaggle exactly
-        results = model.predict(pil_img, conf=0.25)
+        results = model.predict(pil_img, conf=threshold, verbose=False)
 
         predictions = []
         for result in results:
@@ -172,7 +176,7 @@ def predict():
         print(f"✅ Found {len(predictions)} predictions")
 
         annotated_image_base64 = None
-        if len(predictions) > 0:
+        if include_annotated_image and len(predictions) > 0:
             annotated_img = results[0].plot()
             _, buffer = cv2.imencode('.jpg', annotated_img, [cv2.IMWRITE_JPEG_QUALITY, 85])
             annotated_image_base64 = base64.b64encode(buffer).decode('utf-8')
@@ -186,9 +190,7 @@ def predict():
         })
 
     except Exception as e:
-        print(f"❌ Error during prediction: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        print("❌ Error during prediction")
         return jsonify({"error": "Prediction failed", "message": str(e)}), 500
 
 
@@ -266,7 +268,7 @@ def search_knowledge(question, disease_hint='', top_k=TOP_K):
 @app.route('/search', methods=['POST'])
 def search():
     if collection is None:
-        return jsonify({'error': 'RAG not available — GEMINI_API_KEY not set or ChromaDB not loaded'}), 503
+        return jsonify({'error': 'Optional legacy RAG is disabled or unavailable'}), 503
 
     data = request.get_json()
     if not data or 'question' not in data:
@@ -405,14 +407,13 @@ def stats():
 # =====================
 if __name__ == '__main__':
     print("=" * 50)
-    print("🌾 Rice Disease API (YOLO ONNX + RAG)")
+    print("🌾 Rice Disease API (YOLO best.pt)")
     print("=" * 50)
-    print(f"  YOLO Model: {'✅ loaded (ONNX)' if session else '❌ not loaded'}")
-    print(f"  RAG/ChromaDB: {'✅ loaded' if collection else '❌ not loaded'}")
-    if CLASS_NAMES:
-        print(f"  Classes: {CLASS_NAMES}")
-    if collection:
-        print(f"  Chunks: {collection.count()}")
+    print(f"  YOLO Model: {'✅ loaded (best.pt)' if model else '❌ not loaded'}")
+    if model:
+        print(f"  Classes: {model.names}")
+    if ENABLE_RAG and collection:
+        print(f"  Optional legacy RAG chunks: {collection.count()}")
     print("=" * 50)
 
     port = int(os.environ.get('PORT', 5000))

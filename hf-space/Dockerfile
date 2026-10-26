@@ -11,6 +11,11 @@ WORKDIR /app
 COPY requirements-hf.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Optional compatibility for standalone API consumers, never required by LINE.
+ARG ENABLE_RAG=false
+ENV ENABLE_RAG=${ENABLE_RAG}
+RUN if [ "$ENABLE_RAG" = "true" ]; then pip install --no-cache-dir 'chromadb>=0.4.0' 'google-genai>=1.0.0'; fi
+
 # Copy application files
 COPY app.py ./
 COPY best.pt ./

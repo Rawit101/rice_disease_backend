@@ -15,25 +15,17 @@ services:
         sync: false
       - key: CHANNEL_SECRET
         sync: false
-      - key: MAXPLUS_API_KEY
-        sync: false
-      - key: MAXPLUS_BASE_URL
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY
         sync: false
-      - key: BASE_URL
-        sync: false
       # ชี้ไปที่ Python API service บน Render
       - key: YOLO_API_URL
         sync: false
-      - key: RAG_API_URL
-        sync: false
+      - key: YOLO_CONFIDENCE_THRESHOLD
+        value: "0.25"
 
-  # Service 2: YOLO + RAG API (Python ONNX)
+  # Service 2: YOLO best.pt detection API (PyTorch; legacy RAG disabled)
   - type: web
     name: rice-disease-api
     runtime: docker
@@ -43,9 +35,7 @@ services:
     envVars:
       - key: PORT
         value: "5000"
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: MAXPLUS_API_KEY
-        sync: false
-      - key: MAXPLUS_BASE_URL
-        sync: false
+      - key: ENABLE_RAG
+        value: "false"
+      - key: YOLO_CONFIDENCE_THRESHOLD
+        value: "0.25"

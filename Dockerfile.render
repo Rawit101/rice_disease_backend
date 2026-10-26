@@ -5,9 +5,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --production
 
-COPY index.js database.js ./
-COPY public/ ./public/
-COPY data/ ./data/
+COPY index.js database.js image-processing.js line-interface.js ./
 
 EXPOSE 3000
 

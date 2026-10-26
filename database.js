@@ -62,23 +62,8 @@ export async function upsertUser(lineUserId, displayName = null) {
         if (error) throw error
         return true
     } catch (error) {
-        console.error('❌ upsertUser error:', error.message)
+        console.error('❌ upsertUser failed')
         return false
-    }
-}
-
-/**
- * เพิ่มจำนวนข้อความของผู้ใช้
- */
-async function incrementMessageCount(lineUserId) {
-    if (!supabase) return
-    try {
-        const { error } = await supabase.rpc('increment_message_count', {
-            user_line_id: lineUserId
-        })
-        if (error) throw error
-    } catch (error) {
-        console.error('❌ incrementMessageCount error:', error.message)
     }
 }
 
@@ -93,7 +78,7 @@ async function incrementAnalysisCount(lineUserId) {
         })
         if (error) throw error
     } catch (error) {
-        console.error('❌ incrementAnalysisCount error:', error.message)
+        console.error('❌ incrementAnalysisCount failed')
     }
 }
 
@@ -129,7 +114,7 @@ export async function saveAnalysis(lineUserId, result) {
 
         return data.id
     } catch (error) {
-        console.error('❌ saveAnalysis error:', error.message)
+        console.error('❌ saveAnalysis failed')
         return null
     }
 }
@@ -158,41 +143,8 @@ export async function getAnalysisHistory(lineUserId, limit = 10) {
 }
 
 // =====================
-// ประวัติแชท (Chat History)
+// Read-only legacy chat history for the history API; never used by LINE events
 // =====================
-
-/**
- * บันทึกข้อความแชท
- * @param {string} lineUserId - LINE userId
- * @param {string} role - 'user' หรือ 'bot'
- * @param {string} message - ข้อความ
- */
-export async function saveChatMessage(lineUserId, role, message) {
-    if (!supabase) return null
-    try {
-        const { data, error } = await supabase
-            .from('chat_history')
-            .insert({
-                line_user_id: lineUserId,
-                role,
-                message
-            })
-            .select('id')
-            .single()
-
-        if (error) throw error
-
-        // เพิ่มจำนวนข้อความ (ไม่ block ถ้า fail)
-        if (role === 'user') {
-            incrementMessageCount(lineUserId)
-        }
-
-        return data.id
-    } catch (error) {
-        console.error('❌ saveChatMessage error:', error.message)
-        return null
-    }
-}
 
 /**
  * ดึงประวัติแชทของผู้ใช้

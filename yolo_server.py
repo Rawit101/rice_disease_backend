@@ -7,11 +7,18 @@ from PIL import Image
 import io
 import os
 import base64
+import math
 
 app = Flask(__name__)
 CORS(app, origins=['http://localhost:3000', 'http://127.0.0.1:3000'])
 
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+
+# Match the existing production best.pt inference threshold and the LINE client.
+YOLO_CONFIDENCE_THRESHOLD = float(os.getenv('YOLO_CONFIDENCE_THRESHOLD', '0.25'))
+if not math.isfinite(YOLO_CONFIDENCE_THRESHOLD) or not 0 < YOLO_CONFIDENCE_THRESHOLD <= 1:
+    raise ValueError('YOLO_CONFIDENCE_THRESHOLD must be greater than 0 and at most 1')
+
 
 MODEL_PATH = "best.pt"
 
@@ -54,6 +61,14 @@ def predict():
         }), 400
 
     try:
+        try:
+            threshold = float(request.form.get('confidence_threshold', YOLO_CONFIDENCE_THRESHOLD))
+            if not math.isfinite(threshold) or not 0 < threshold <= 1:
+                raise ValueError('Invalid threshold')
+        except (TypeError, ValueError):
+            return jsonify({"error": "confidence_threshold must be greater than 0 and at most 1"}), 400
+        include_annotated_image = request.form.get('include_annotated_image', 'true').lower() != 'false'
+
         image_file = request.files['image']
         image_bytes = image_file.read()
 
@@ -81,7 +96,7 @@ def predict():
             }), 400
 
         # ทำนายด้วย YOLO แบบเดียวกับ Kaggle
-        results = model.predict(pil_img, conf=0.1)
+        results = model.predict(pil_img, conf=threshold, verbose=False)
 
         predictions = []
 
@@ -103,7 +118,7 @@ def predict():
         print(f"✅ Found {len(predictions)} predictions")
 
         annotated_image_base64 = None
-        if len(predictions) > 0:
+        if include_annotated_image and len(predictions) > 0:
             # ใช้ r.plot() แบบเดียวกับใน Kaggle
             annotated_img = results[0].plot() 
             _, buffer = cv2.imencode('.jpg', annotated_img, [cv2.IMWRITE_JPEG_QUALITY, 85])
@@ -119,7 +134,7 @@ def predict():
         })
 
     except Exception as e:
-        print(f"❌ Error during prediction: {str(e)}")
+        print("❌ Error during prediction")
         return jsonify({
             "error": "Prediction failed",
             "message": str(e)
