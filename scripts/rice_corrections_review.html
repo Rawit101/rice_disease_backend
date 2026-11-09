@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="th"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ตรวจขอบเขตที่แก้ — โรคข้าว</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:15px system-ui,sans-serif;background:#eff3ee;color:#183626}header{background:#163e2c;color:#fff;padding:20px 24px}h1{font-size:24px;margin:0}header p{margin:8px 0 0}main{max-width:1600px;margin:auto;padding:18px}.controls,#details{background:#fff;border-radius:10px;padding:14px;margin-bottom:12px}.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}select,input,button{font:inherit;padding:9px;border:1px solid #b4c7b7;border-radius:6px;background:white}button{cursor:pointer}input[type=search]{min-width:200px}#position{padding:0 8px}.panels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}section{background:white;border-radius:10px;overflow:hidden}h2{font-size:17px;margin:0;background:#dce9dd;padding:12px}canvas{width:100%;height:470px;object-fit:contain;display:block;background:#18261d}section p{padding:10px;margin:0;min-height:50px}.warning{background:#fff0d6;padding:12px;border-radius:8px;color:#724800;margin-top:12px}#details p{margin:7px 0}a{color:#17613a}@media(max-width:800px){h1{font-size:20px}.panels{grid-template-columns:repeat(2,minmax(0,1fr))}.panels section:first-child{grid-column:span 2}canvas{height:240px}h2{font-size:14px;padding:10px}section p{font-size:12px}header,main{padding:12px}.controls>*{font-size:13px}input[type=search]{min-width:130px}}
+</style>
+<header><h1>ขอบเขตที่แก้ — เทียบก่อนและหลัง</h1><p id="summary">กำลังโหลด…</p></header>
+<main><div class="controls">
+<select id="filter" aria-label="สถานะ"><option value="changed">ไฟล์ label ที่เปลี่ยน</option><option value="visual">ภาพที่ AI ตรวจรับขอบเขต</option><option value="class">ภาพที่ AI เสนอแก้คลาส</option><option value="pending">ยังมีประเด็นต้องตรวจ</option><option value="missing">ยังไม่มี label</option><option value="all">ทุกภาพ</option></select>
+<select id="folder" aria-label="โฟลเดอร์"><option value="">ทุกโฟลเดอร์</option></select>
+<input id="search" type="search" placeholder="ค้นชื่อไฟล์ / รหัสภาพ" aria-label="ค้นภาพ">
+<button id="prev">← ก่อนหน้า</button><span id="position"></span><button id="next">ถัดไป →</button>
+<label><input id="dedup" type="checkbox" checked> ซ่อนรูปซ้ำ</label></div>
+<div id="details"></div><div class="panels">
+<section><h2>ภาพต้นฉบับ</h2><canvas id="source"></canvas><p>ภาพที่ได้รับมา</p></section>
+<section><h2>Label ก่อนแก้</h2><canvas id="before"></canvas><p id="beforeInfo"></p></section>
+<section><h2>Label ฉบับแก้</h2><canvas id="after"></canvas><p id="afterInfo"></p></section>
+</div><div class="warning">ชื่อโรคในโฟลเดอร์ยังไม่มีผู้รู้ยืนยัน การแก้และการตรวจด้วย AI ยังไม่ใช่ ground truth จากผู้เชี่ยวชาญ ภาพที่ระบุโรคไม่ได้จะไม่ถูกเดาชื่อเพื่อให้ครบจำนวน</div></main>
+<!-- BEGIN CLASS NAME RENDERER -->
+<script>
+/* Names describe the annotation class, never a diagnosis inferred from a folder. */
+(function (global) {
+  'use strict';
+  const thai = Object.freeze({
+    Bacterial_Blight: 'โรคขอบใบแห้ง', Brown_Spot: 'โรคใบจุดสีน้ำตาล',
+    Rice_Blast: 'โรคไหม้', Narrow_Brown_Spot: 'โรคใบขีดสีน้ำตาล',
+    False_Smut: 'โรคดอกกระถิน', Dirty_Seed: 'โรคเมล็ดด่าง',
+    Sheath_Rot: 'โรคกาบใบเน่า', Stem_Rot: 'โรคลำต้นเน่า',
+    Red_Stripe: 'โรคใบแถบแดง', Tungro: 'โรคใบสีส้ม'
+  });
+  const colors = ['#37e5a3','#ffcd43','#78c4ff','#ff95cc','#c6abff',
+    '#ffab70','#bce77b','#86e4e4','#ff8282','#ffe56b'];
+  function name(id, names) {
+    const en = names[id];
+    return en ? `${thai[en] || en} · ${en} · class ${id}` : `class ${id} · ยังไม่มีชื่อในชุดนี้`;
+  }
+  function color(id) { return colors[((Number(id) % colors.length) + colors.length) % colors.length]; }
+  function summary(objects, names) {
+    return [...new Set(objects.map(o => Number(o.class_id)))].sort((a,b)=>a-b)
+      .map(id => name(id, names)).join(' / ');
+  }
+  function draw(canvas, img, objects, names, options = {}) {
+    // A consistent drawing size keeps names readable even for 224px source images.
+    const width = 1200, height = Math.round(width * img.naturalHeight / img.naturalWidth);
+    const ids = [...new Set(objects.map(o => Number(o.class_id)))].sort((a,b)=>a-b);
+    const legendHeight = ids.length ? 18 + ids.length * 50 : (options.emptyText ? 63 : 0);
+    canvas.width = width; canvas.height = height + legendHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, width, height);
+    const groups = new Map();
+    for (const o of objects) {
+      const points = o.polygon;
+      if (!points || points.length < 3) continue;
+      const id = Number(o.class_id), col = color(id);
+      ctx.beginPath(); points.forEach(([x,y],i)=>i ? ctx.lineTo(x*width,y*height) : ctx.moveTo(x*width,y*height));
+      ctx.closePath(); ctx.fillStyle = col + '35'; ctx.fill();
+      ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.stroke();
+      const xs = points.map(p=>p[0]), ys = points.map(p=>p[1]);
+      const box = {x: Math.min(...xs)*width, y: Math.min(...ys)*height,
+        right: Math.max(...xs)*width, bottom: Math.max(...ys)*height};
+      box.area = (box.right-box.x)*(box.bottom-box.y);
+      if (!groups.has(id) || box.area > groups.get(id).area) groups.set(id, box);
+    }
+    // One full name per class avoids burying small lesions under repeated text.
+    // Every region of that class shares the same color and the legend counts all regions.
+    const occupied = [];
+    ctx.font = 'bold 35px system-ui, sans-serif'; ctx.textBaseline = 'middle';
+    for (const [id, box] of groups) {
+      const text = name(id, names), pad = 12, h = 59;
+      const w = Math.min(width-16, ctx.measureText(text).width+pad*2);
+      const x = Math.min(width-w-8, Math.max(8, box.x));
+      let y = Math.max(8, Math.min(height-h-8, box.y-h-8));
+      for (let tries=0; tries<ids.length; tries++) {
+        if (!occupied.some(r=>x<r.x+r.w && x+w>r.x && y<r.y+r.h && y+h>r.y)) break;
+        y = Math.min(height-h-8, y+h+6);
+      }
+      occupied.push({x,y,w,h});
+      ctx.fillStyle='#10281fec'; ctx.fillRect(x,y,w,h);
+      ctx.strokeStyle=color(id); ctx.lineWidth=3; ctx.strokeRect(x,y,w,h);
+      ctx.fillStyle=color(id); ctx.fillText(text,x+pad,y+h/2,w-pad*2);
+      ctx.beginPath(); ctx.moveTo(x+Math.min(w/2,40),y+h);
+      ctx.lineTo(Math.max(box.x,Math.min(box.right,x+40)),Math.max(box.y,Math.min(box.bottom,y+h)));
+      ctx.stroke();
+    }
+    if (legendHeight) {
+      ctx.fillStyle='#10281f'; ctx.fillRect(0,height,width,legendHeight);
+      ctx.font='30px system-ui, sans-serif'; ctx.textBaseline='middle';
+      ids.forEach((id,i)=>{
+        const count=objects.filter(o=>Number(o.class_id)===id).length;
+        ctx.fillStyle=color(id); ctx.fillRect(16,height+20+i*50,14,23);
+        ctx.fillText(`${name(id,names)}  ·  ${count} ขอบเขต`,43,height+31+i*50,width-60);
+      });
+      if (!ids.length) { ctx.fillStyle='#d7e7dd'; ctx.fillText(options.emptyText,20,height+31,width-40); }
+    }
+    canvas.setAttribute('aria-label', summary(objects,names) || options.emptyText || 'ภาพต้นฉบับ');
+  }
+  global.RiceClassNames = Object.freeze({thai, name, color, summary, draw});
+})(globalThis);
+
+</script>
+<!-- END CLASS NAME RENDERER -->
+<script>
+const $=id=>document.getElementById(id);let all=[],rows=[],pos=0,names=[],seq=0;
+const repairNames={topology_repaired:'แยกวงเส้นขอบที่เชื่อมผิดรูป',ai_visual_annotation:'AI ตรวจรับขอบเขตรายภาพ'};
+function selected(r){const s=$('filter').value;if($('dedup').checked&&r.exact_duplicate)return false;if($('folder').value&&r.source_folder!==$('folder').value)return false;if(s==='changed'&&!r.repair_changed)return false;if(s==='visual'&&!r.repair_types.includes('ai_visual_annotation'))return false;if(s==='class'&&!r.ai_proposed_class_correction)return false;if(s==='missing'&&r.label)return false;if(s==='pending'&&!(r.reasons.length||r.has_unreviewed_boundary_proposal||!r.label))return false;return (r.source+' '+r.id).toLowerCase().includes($('search').value.toLowerCase())}
+function filter(){rows=all.filter(selected);pos=0;render()}
+function paint(id,img,objects){RiceClassNames.draw($(id),img,objects,names)}
+function info(objects){return objects.length+' ขอบเขต · '+RiceClassNames.summary(objects,names)}
+async function render(){const token=++seq;$('position').textContent=rows.length?`${pos+1} / ${rows.length.toLocaleString()}`:'0 / 0';$('prev').disabled=pos===0;$('next').disabled=pos>=rows.length-1;$('details').replaceChildren();if(!rows.length){$('details').textContent='ไม่มีภาพตรงกับตัวกรอง';for(const id of ['source','before','after']){const c=$(id);c.getContext('2d').clearRect(0,0,c.width,c.height)}return}const r=rows[pos];const title=document.createElement('strong');title.textContent=r.source_folder+' · '+r.source.split('/').pop();$('details').append(title);for(const line of [r.repair_types.map(x=>repairNames[x]||x).join(' · ')||'ยังไม่ได้แก้ label',`สถานะฝึกเพิ่มเติม: ${r.default_split==='train'?'อยู่ในรายการฝึกร่าง':'พักไว้ ยังไม่เข้ารายการฝึก'} · ชื่อโรคยังไม่ยืนยัน`,...(r.reasons.length?['ประเด็นคงค้าง: '+r.reasons.join(' · ')]:[])]){const p=document.createElement('p');p.textContent=line;$('details').append(p)}const link=document.createElement('a');link.href=r.image;link.target='_blank';link.textContent='เปิดภาพขนาดจริง';$('details').append(link);if(r.label){const a=document.createElement('a');a.href=r.label;a.target='_blank';a.textContent=' · เปิด label';$('details').append(a)}try{const [d,img]=await Promise.all([fetch(r.prediction_file).then(x=>{if(!x.ok)throw Error(x.status);return x.json()}),new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=r.image})]);if(token!==seq)return;const before=d.objects_before||d.objects;paint('source',img,[]);paint('before',img,before);paint('after',img,d.objects);$('beforeInfo').textContent=info(before);$('afterInfo').textContent=info(d.objects);history.replaceState(null,'','?id='+encodeURIComponent(r.id))}catch(e){$('details').append(' โหลดไม่สำเร็จ: '+e.message)}}
+for(const id of ['filter','folder','dedup'])$(id).onchange=filter;$('search').oninput=filter;$('prev').onclick=()=>{if(pos>0){pos--;render()}};$('next').onclick=()=>{if(pos<rows.length-1){pos++;render()}};document.addEventListener('keydown',e=>{if(['INPUT','SELECT'].includes(e.target.tagName))return;if(e.key==='ArrowRight')$('next').click();if(e.key==='ArrowLeft')$('prev').click()});
+Promise.all([fetch('manifest.json').then(r=>r.json()),fetch('report.json').then(r=>r.json())]).then(([m,r])=>{all=m;names=r.class_names;for(const f of [...new Set(m.map(x=>x.source_folder))]){const o=document.createElement('option');o.value=f;o.textContent=f;$('folder').append(o)}const s=r.correction_summary;$('summary').textContent=`ทั้งหมด ${m.length.toLocaleString()} ภาพ · เปลี่ยนไฟล์ label ${s.label_files_changed.toLocaleString()} ไฟล์ · ตรวจภาพและข้อเสนอ ${r.source_images_visually_inspected} ภาพ · ตรวจรับ ${r.individually_accepted_visual_annotations} ภาพ`;const id=new URLSearchParams(location.search).get('id');if(id){$('filter').value='all';rows=all.filter(selected);const n=rows.findIndex(x=>x.id===id);pos=Math.max(n,0);render()}else filter()}).catch(e=>$('summary').textContent='โหลดชุดข้อมูลไม่สำเร็จ: '+e.message);
+</script></html>

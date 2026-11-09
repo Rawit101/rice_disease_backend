@@ -1,0 +1,118 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ตรวจซ้ำภาพที่ยังทำ label ไม่สำเร็จ</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f1f4f1;color:#203229;font:15px system-ui,sans-serif}header{padding:20px 24px;background:#153c2b;color:white}h1{font-size:24px;margin:0}header p{margin:7px 0 0;color:#d3e5d9}main{max-width:1500px;margin:auto;padding:18px}.notice{padding:12px;background:#fff0cf;border:1px solid #ead6a8;border-radius:8px;line-height:1.55}.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:white;padding:12px;margin:14px 0;border-radius:9px}select,input,button{font:inherit;border:1px solid #b8c8bd;border-radius:6px;padding:8px;background:white;color:#203229}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}input{min-width:220px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:14px}.card{background:white;border:1px solid #d2ddd5;border-radius:10px;overflow:hidden}.picture{display:block;width:100%;border:0;padding:0;background:#19241e;border-radius:0}.picture img{display:block;width:100%;height:245px;object-fit:contain}.body{padding:12px}.body strong{display:block}.filename{font-size:12px;color:#59695e;overflow-wrap:anywhere;margin:4px 0}.badge{font-size:12px;display:inline-block;background:#fff0cf;color:#7b4d0b;padding:4px 7px;border-radius:4px;margin:4px 0}.badge.new{background:#e6eafd;color:#364f93}.small{font-size:12px;color:#56675c;line-height:1.5}.reason{font-size:13px;line-height:1.55;margin:7px 0}.card .view{width:100%}.pagination{display:flex;gap:12px;justify-content:center;align-items:center;margin:18px 0}dialog{width:min(1150px,96vw);max-height:96vh;border:0;border-radius:12px;padding:18px}dialog::backdrop{background:#11251de0}.dialoghead{display:flex;gap:12px;justify-content:space-between;align-items:start}.dialoghead h2{font-size:20px;margin:0}.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.pair figure{margin:0}.pair figcaption{font-size:13px;padding:6px;background:#e7eee9}.pair img,.pair canvas{display:block;width:100%;height:460px;object-fit:contain;background:#17221b}.meta{font-size:13px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}a{color:#1b7047}.count{font-weight:600}.chips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.chips button{background:#e7eee9}
+@media(max-width:650px){header{padding:15px}h1{font-size:21px}header p{font-size:13px}main{padding:12px}.tools{display:grid;grid-template-columns:1fr 1fr;gap:7px}.tools select,.tools input{width:100%;min-width:0;font-size:13px}.tools input{grid-column:span 2}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.picture img{height:175px}.body{padding:9px}.body strong{font-size:13px}.reason{font-size:12px}.small{font-size:11px}.body .view{font-size:12px;padding:7px}.pair{grid-template-columns:1fr}.pair img,.pair canvas{height:330px}.notice{font-size:13px}.chips button{font-size:12px;padding:7px}}
+</style>
+<style>.tools label{display:flex;align-items:center;gap:5px;font-size:13px}.tools label input[type=checkbox]{width:auto;min-width:0;flex:none}.badge.fixed{background:#dff2e5;color:#1a633c}</style>
+<header><h1>ภาพที่ยังทำ label ไม่สำเร็จ</h1><p id="summary">กำลังโหลดผลตรวจซ้ำ…</p></header>
+<main><div class="notice" id="notice"></div>
+<div class="chips"><button id="all">ที่ยังไม่สำเร็จ</button><button id="old">โรคเดิม</button><button id="new">โรคใหม่</button><button id="candidates">กรอบเสนอใหม่</button><button id="blank">ภาพเกือบดำล้วน</button><button id="fixed">แก้เพิ่มได้แล้ว</button></div>
+<div class="tools"><select id="group"><option value="">ทุกกลุ่ม</option><option value="old">โรคเดิมที่ยังไม่พบขอบเขต</option><option value="new">โรคใหม่ที่โมเดลไม่รองรับ</option></select>
+<select id="folder"><option value="">ทุกชื่อโรค</option></select>
+<select id="status"><option value="">ทุกผลตรวจซ้ำ</option><option value="crop_candidates_need_review">พบกรอบเสนอใหม่ แต่ยังไม่ผ่านการยืนยัน</option><option value="no_usable_crop_prediction">ซูมตรวจแล้ว ยังไม่พบกรอบ</option><option value="nearly_empty_black_crop">ภาพเกือบดำล้วน</option><option value="unsupported_new_class">ต้องทำ annotation ของโรคใหม่</option><option value="resolved_after_manual_fix">แก้เพิ่มได้แล้ว</option></select>
+<label><input type="checkbox" id="dedup" style="min-width:0"> ซ่อนรูปไฟล์ซ้ำ</label>
+<input id="search" aria-label="ค้นชื่อไฟล์หรือรหัสรูป" placeholder="ค้นชื่อไฟล์หรือรหัสรูป"></div>
+<p class="count" id="count"></p><div class="grid" id="grid"></div>
+<div class="pagination"><button id="prev">← หน้าก่อน</button><span id="page"></span><button id="next">หน้าถัดไป →</button></div>
+<p class="small">ทุกภาพในหน้านี้ยังไม่นำเข้าเทรน กรอบจากการซูมเป็นเพียงข้อเสนอ หากเห็นเป้าหมายชัดสามารถนำไปแก้ annotation ต่อได้ การที่โมเดลไม่พบกรอบไม่ได้แปลว่าภาพไม่มีโรค</p>
+<a href="remaining_status.csv" download>ดาวน์โหลดรายชื่อและเหตุผลทั้งหมด</a> · <a href="reviewed_additions.zip" download>ดาวน์โหลด label ที่แก้เพิ่ม</a></main>
+<dialog id="detail"><div class="dialoghead"><h2 id="title"></h2><button id="close">ปิด ✕</button></div>
+<p id="detailreason"></p><div class="pair"><figure><figcaption>ภาพต้นฉบับที่นำมาตรวจ</figcaption><img id="fullimage"></figure><figure><figcaption>ขอบเขตประกอบการตรวจภาพ — ดูสถานะและเหตุผลด้านบน</figcaption><canvas id="overlay"></canvas></figure></div>
+<p class="meta" id="metadata"></p><a id="original" target="_blank">เปิดภาพขนาดจริง</a>
+<div class="pagination"><button id="detailprev">← ภาพก่อน</button><button id="detailnext">ภาพถัดไป →</button></div></dialog>
+<!-- BEGIN CLASS NAME RENDERER -->
+<script>
+/* Names describe the annotation class, never a diagnosis inferred from a folder. */
+(function (global) {
+  'use strict';
+  const thai = Object.freeze({
+    Bacterial_Blight: 'โรคขอบใบแห้ง', Brown_Spot: 'โรคใบจุดสีน้ำตาล',
+    Rice_Blast: 'โรคไหม้', Narrow_Brown_Spot: 'โรคใบขีดสีน้ำตาล',
+    False_Smut: 'โรคดอกกระถิน', Dirty_Seed: 'โรคเมล็ดด่าง',
+    Sheath_Rot: 'โรคกาบใบเน่า', Stem_Rot: 'โรคลำต้นเน่า',
+    Red_Stripe: 'โรคใบแถบแดง', Tungro: 'โรคใบสีส้ม'
+  });
+  const colors = ['#37e5a3','#ffcd43','#78c4ff','#ff95cc','#c6abff',
+    '#ffab70','#bce77b','#86e4e4','#ff8282','#ffe56b'];
+  function name(id, names) {
+    const en = names[id];
+    return en ? `${thai[en] || en} · ${en} · class ${id}` : `class ${id} · ยังไม่มีชื่อในชุดนี้`;
+  }
+  function color(id) { return colors[((Number(id) % colors.length) + colors.length) % colors.length]; }
+  function summary(objects, names) {
+    return [...new Set(objects.map(o => Number(o.class_id)))].sort((a,b)=>a-b)
+      .map(id => name(id, names)).join(' / ');
+  }
+  function draw(canvas, img, objects, names, options = {}) {
+    // A consistent drawing size keeps names readable even for 224px source images.
+    const width = 1200, height = Math.round(width * img.naturalHeight / img.naturalWidth);
+    const ids = [...new Set(objects.map(o => Number(o.class_id)))].sort((a,b)=>a-b);
+    const legendHeight = ids.length ? 18 + ids.length * 50 : (options.emptyText ? 63 : 0);
+    canvas.width = width; canvas.height = height + legendHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, width, height);
+    const groups = new Map();
+    for (const o of objects) {
+      const points = o.polygon;
+      if (!points || points.length < 3) continue;
+      const id = Number(o.class_id), col = color(id);
+      ctx.beginPath(); points.forEach(([x,y],i)=>i ? ctx.lineTo(x*width,y*height) : ctx.moveTo(x*width,y*height));
+      ctx.closePath(); ctx.fillStyle = col + '35'; ctx.fill();
+      ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.stroke();
+      const xs = points.map(p=>p[0]), ys = points.map(p=>p[1]);
+      const box = {x: Math.min(...xs)*width, y: Math.min(...ys)*height,
+        right: Math.max(...xs)*width, bottom: Math.max(...ys)*height};
+      box.area = (box.right-box.x)*(box.bottom-box.y);
+      if (!groups.has(id) || box.area > groups.get(id).area) groups.set(id, box);
+    }
+    // One full name per class avoids burying small lesions under repeated text.
+    // Every region of that class shares the same color and the legend counts all regions.
+    const occupied = [];
+    ctx.font = 'bold 35px system-ui, sans-serif'; ctx.textBaseline = 'middle';
+    for (const [id, box] of groups) {
+      const text = name(id, names), pad = 12, h = 59;
+      const w = Math.min(width-16, ctx.measureText(text).width+pad*2);
+      const x = Math.min(width-w-8, Math.max(8, box.x));
+      let y = Math.max(8, Math.min(height-h-8, box.y-h-8));
+      for (let tries=0; tries<ids.length; tries++) {
+        if (!occupied.some(r=>x<r.x+r.w && x+w>r.x && y<r.y+r.h && y+h>r.y)) break;
+        y = Math.min(height-h-8, y+h+6);
+      }
+      occupied.push({x,y,w,h});
+      ctx.fillStyle='#10281fec'; ctx.fillRect(x,y,w,h);
+      ctx.strokeStyle=color(id); ctx.lineWidth=3; ctx.strokeRect(x,y,w,h);
+      ctx.fillStyle=color(id); ctx.fillText(text,x+pad,y+h/2,w-pad*2);
+      ctx.beginPath(); ctx.moveTo(x+Math.min(w/2,40),y+h);
+      ctx.lineTo(Math.max(box.x,Math.min(box.right,x+40)),Math.max(box.y,Math.min(box.bottom,y+h)));
+      ctx.stroke();
+    }
+    if (legendHeight) {
+      ctx.fillStyle='#10281f'; ctx.fillRect(0,height,width,legendHeight);
+      ctx.font='30px system-ui, sans-serif'; ctx.textBaseline='middle';
+      ids.forEach((id,i)=>{
+        const count=objects.filter(o=>Number(o.class_id)===id).length;
+        ctx.fillStyle=color(id); ctx.fillRect(16,height+20+i*50,14,23);
+        ctx.fillText(`${name(id,names)}  ·  ${count} ขอบเขต`,43,height+31+i*50,width-60);
+      });
+      if (!ids.length) { ctx.fillStyle='#d7e7dd'; ctx.fillText(options.emptyText,20,height+31,width-40); }
+    }
+    canvas.setAttribute('aria-label', summary(objects,names) || options.emptyText || 'ภาพต้นฉบับ');
+  }
+  global.RiceClassNames = Object.freeze({thai, name, color, summary, draw});
+})(globalThis);
+
+</script>
+<!-- END CLASS NAME RENDERER -->
+<script>
+const $=id=>document.getElementById(id);let rows=[],visible=[],page=0,detailIndex=0,sequence=0;const size=24;
+const names=['Bacterial_Blight','Brown_Spot','Rice_Blast','Narrow_Brown_Spot','False_Smut','Dirty_Seed','Sheath_Rot','Stem_Rot','Red_Stripe'];
+const labels={unsupported_new_class:'โรคใหม่ — โมเดลเดิมไม่รองรับ',nearly_empty_black_crop:'ภาพเกือบดำล้วน',crop_candidates_need_review:'พบกรอบเสนอใหม่ — ต้องตรวจแก้',no_usable_crop_prediction:'ซูมตรวจแล้ว ยังไม่พบกรอบที่ใช้ได้',resolved_after_manual_fix:'แก้ขอบเขตเพิ่มแล้ว — มีไฟล์ label'};
+function apply(){let rs=rows.filter(r=>(!r.training_label_approved||$('status').value==='resolved_after_manual_fix')&&(!$('group').value||r.group===$('group').value)&&(!$('folder').value||r.source_folder===$('folder').value)&&(!$('status').value||r.status===$('status').value));const q=$('search').value.trim().toLowerCase();rs=rs.filter(r=>!q||(r.source+' '+r.id).toLowerCase().includes(q));if($('dedup').checked){const seen=new Set();rs=rs.filter(r=>{if(seen.has(r.sha256))return false;seen.add(r.sha256);return true;});}visible=rs;page=0;render();}
+function render(){$('count').textContent=`แสดง ${visible.length.toLocaleString()} ไฟล์ จากชุดที่นำมาตรวจซ้ำ ${rows.length.toLocaleString()} ไฟล์`;$('grid').replaceChildren();for(const r of visible.slice(page*size,(page+1)*size)){const card=document.createElement('article');card.className='card';const picture=document.createElement('button');picture.className='picture';picture.setAttribute('aria-label','ดูภาพ '+r.filename);const img=document.createElement('img');img.src=r.image;img.alt=r.source_folder+' '+r.filename;img.loading='lazy';picture.append(img);picture.onclick=()=>openDetail(r.id);card.append(picture);const body=document.createElement('div');body.className='body';const title=document.createElement('strong');title.textContent=r.source_folder;body.append(title);const fn=document.createElement('div');fn.className='filename';fn.textContent=r.filename;body.append(fn);const badge=document.createElement('span');badge.className='badge'+(r.group==='new'?' new':'');badge.textContent=labels[r.status];body.append(badge);const reason=document.createElement('p');reason.className='reason';reason.textContent=r.reason;body.append(reason);const info=document.createElement('p');info.className='small';info.textContent=`${r.width}×${r.height} พิกเซล · ${r.candidate_count} ขอบเขต${r.duplicate_count>1?' · มีไฟล์เนื้อหาเดียวกัน '+r.duplicate_count+' ไฟล์':''}`;body.append(info);const button=document.createElement('button');button.className='view';button.textContent='ดูภาพใหญ่และเหตุผล';button.onclick=()=>openDetail(r.id);body.append(button);card.append(body);$('grid').append(card);}$('page').textContent=`หน้า ${visible.length?page+1:0} / ${Math.ceil(visible.length/size)}`;$('prev').disabled=page===0;$('next').disabled=(page+1)*size>=visible.length;}
+async function openDetail(id){detailIndex=visible.findIndex(r=>r.id===id);if(detailIndex<0)return;const r=visible[detailIndex],token=++sequence;$('title').textContent=r.source_folder+' · '+r.filename;$('detailreason').textContent=r.reason;$('metadata').textContent=`ขนาดต้นฉบับ: ${r.width}×${r.height} พิกเซล\nผลตรวจ: ${labels[r.status]}\nรหัสรูป: ${r.id}\nที่มา: ${r.source}\n${r.visual_note||''}`;$('original').href=r.image;$('fullimage').src=r.image;$('detailprev').disabled=detailIndex===0;$('detailnext').disabled=detailIndex===visible.length-1;if(!$('detail').open)$('detail').showModal();const [data,img]=await Promise.all([fetch(r.candidate_file).then(x=>x.json()),new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=r.image;})]);if(token!==sequence)return;RiceClassNames.draw($('overlay'),img,data.objects,names);}
+for(const id of ['group','folder','status','dedup'])$(id).onchange=apply;$('search').oninput=apply;
+$('prev').onclick=()=>{if(page>0){page--;render();window.scrollTo({top:0,behavior:'smooth'});}};$('next').onclick=()=>{if((page+1)*size<visible.length){page++;render();window.scrollTo({top:0,behavior:'smooth'});}};
+function chip(group,status){$('group').value=group;$('status').value=status;$('folder').value='';$('search').value='';apply();}$('all').onclick=()=>chip('','');$('old').onclick=()=>chip('old','');$('new').onclick=()=>chip('new','');$('candidates').onclick=()=>chip('old','crop_candidates_need_review');$('blank').onclick=()=>chip('','nearly_empty_black_crop');$('fixed').onclick=()=>chip('','resolved_after_manual_fix');$('close').onclick=()=>$('detail').close();$('detailprev').onclick=()=>{if(detailIndex>0)openDetail(visible[detailIndex-1].id);};$('detailnext').onclick=()=>{if(detailIndex<visible.length-1)openDetail(visible[detailIndex+1].id);};
+Promise.all([fetch('review_manifest.json').then(x=>x.json()),fetch('summary.json').then(x=>x.json())]).then(([r,s])=>{rows=r;for(const folder of [...new Set(rows.map(x=>x.source_folder))]){const o=document.createElement('option');o.value=folder;o.textContent=folder;$('folder').append(o);}$('summary').textContent=`ตรวจซ้ำ ${s.checked_files} ไฟล์ · แก้เพิ่ม ${s.visually_checked_additions_files} ไฟล์ · ยังไม่สำเร็จ ${s.remaining_after_manual_review} ไฟล์`;$('notice').textContent='โรคใหม่ 145 ไฟล์ไม่ได้หมายความว่ารูปเสีย แต่โมเดลเดิมยังไม่มีชื่อคลาส ส่วนกลุ่มโรคเดิมได้ตรวจซูม 5 ตำแหน่งด้วย 2 โมเดลเพิ่มเติมแล้ว กรอบที่พบใหม่ยังต้องตรวจความถูกต้องก่อนใช้เทรน';const q=new URLSearchParams(location.search);if(q.get('group'))$('group').value=q.get('group');if(q.get('status'))$('status').value=q.get('status');apply();}).catch(e=>$('summary').textContent='โหลดผลไม่สำเร็จ: '+e.message);
+</script></html>

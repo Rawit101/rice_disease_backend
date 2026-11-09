@@ -1,0 +1,101 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tungro — ตรวจ label โรคใบสีส้ม</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2f5ef;color:#173c2b;font:15px system-ui,sans-serif}header{padding:22px;background:#153d2a;color:white}h1{margin:0;font-size:25px}header p{margin:8px 0 0}main{max-width:1500px;margin:auto;padding:18px}.controls,#details{background:white;padding:14px;border-radius:10px;margin-bottom:12px}.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}input,select,button{font:inherit;padding:9px;border:1px solid #b9c8b7;border-radius:6px;background:white}button{cursor:pointer}input{min-width:160px}.panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}section{background:white;border-radius:10px;overflow:hidden}h2{margin:0;padding:12px;font-size:18px;background:#dfeadd}canvas{display:block;width:100%;height:500px;object-fit:contain;background:#19291f}section p{padding:10px;margin:0}#details p{margin:8px 0}.note{margin-top:12px;padding:12px;background:#fff0d5;color:#714900;border-radius:8px}a{color:#17613f}#pos{min-width:80px;text-align:center}.badge{font-weight:bold;color:#17613f}@media(max-width:750px){header,main{padding:12px}h1{font-size:21px}header p{font-size:13px}.controls{padding:10px}.controls>*{font-size:13px}canvas{height:270px}h2{font-size:14px;padding:10px}section p{font-size:12px}#details,.note{font-size:13px}}
+</style>
+<header><h1>Tungro — label โรคใบสีส้ม</h1><p id="summary">กำลังโหลด…</p></header>
+<main><div class="controls"><select id="status" aria-label="สถานะภาพ"><option value="reviewed">AI ตรวจรับขอบเขตแล้ว</option><option value="draft">Label ร่าง ยังไม่ตรวจรายภาพ</option><option value="missing">ยังไม่มี label ที่ใช้งาน</option><option value="rejected">ตรวจแล้ว ต้องแก้เพิ่ม</option><option value="all">ทุกภาพ Tungro</option></select><input id="search" type="search" aria-label="ค้นภาพ" placeholder="ค้นชื่อไฟล์ / รหัสภาพ"><button id="prev">← ก่อนหน้า</button><span id="pos"></span><button id="next">ถัดไป →</button></div>
+<div id="details"></div><div class="panels"><section><h2>ภาพต้นฉบับ</h2><canvas id="original"></canvas><p>รูปจากหมวด Tungro ที่ได้รับ</p></section><section><h2>ขอบเขตที่ทำ label</h2><canvas id="labeled"></canvas><p id="maskInfo"></p></section></div>
+<div class="note">เลขคลาส <strong>9 = Tungro</strong> · คลาสเดิม 0–8 คงเดิม<br>ชื่อโรคยังอิงหมวดที่ได้รับและยังไม่มีผู้รู้ยืนยัน การตรวจด้วย AI หมายถึงตรวจขอบเขตที่มองเห็น ไม่ใช่การยืนยันโรค โมเดล best.pt เดิมยังไม่ได้เทรนเพิ่ม</div>
+</main><!-- BEGIN CLASS NAME RENDERER -->
+<script>
+/* Names describe the annotation class, never a diagnosis inferred from a folder. */
+(function (global) {
+  'use strict';
+  const thai = Object.freeze({
+    Bacterial_Blight: 'โรคขอบใบแห้ง', Brown_Spot: 'โรคใบจุดสีน้ำตาล',
+    Rice_Blast: 'โรคไหม้', Narrow_Brown_Spot: 'โรคใบขีดสีน้ำตาล',
+    False_Smut: 'โรคดอกกระถิน', Dirty_Seed: 'โรคเมล็ดด่าง',
+    Sheath_Rot: 'โรคกาบใบเน่า', Stem_Rot: 'โรคลำต้นเน่า',
+    Red_Stripe: 'โรคใบแถบแดง', Tungro: 'โรคใบสีส้ม'
+  });
+  const colors = ['#37e5a3','#ffcd43','#78c4ff','#ff95cc','#c6abff',
+    '#ffab70','#bce77b','#86e4e4','#ff8282','#ffe56b'];
+  function name(id, names) {
+    const en = names[id];
+    return en ? `${thai[en] || en} · ${en} · class ${id}` : `class ${id} · ยังไม่มีชื่อในชุดนี้`;
+  }
+  function color(id) { return colors[((Number(id) % colors.length) + colors.length) % colors.length]; }
+  function summary(objects, names) {
+    return [...new Set(objects.map(o => Number(o.class_id)))].sort((a,b)=>a-b)
+      .map(id => name(id, names)).join(' / ');
+  }
+  function draw(canvas, img, objects, names, options = {}) {
+    // A consistent drawing size keeps names readable even for 224px source images.
+    const width = 1200, height = Math.round(width * img.naturalHeight / img.naturalWidth);
+    const ids = [...new Set(objects.map(o => Number(o.class_id)))].sort((a,b)=>a-b);
+    const legendHeight = ids.length ? 18 + ids.length * 50 : (options.emptyText ? 63 : 0);
+    canvas.width = width; canvas.height = height + legendHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, width, height);
+    const groups = new Map();
+    for (const o of objects) {
+      const points = o.polygon;
+      if (!points || points.length < 3) continue;
+      const id = Number(o.class_id), col = color(id);
+      ctx.beginPath(); points.forEach(([x,y],i)=>i ? ctx.lineTo(x*width,y*height) : ctx.moveTo(x*width,y*height));
+      ctx.closePath(); ctx.fillStyle = col + '35'; ctx.fill();
+      ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.stroke();
+      const xs = points.map(p=>p[0]), ys = points.map(p=>p[1]);
+      const box = {x: Math.min(...xs)*width, y: Math.min(...ys)*height,
+        right: Math.max(...xs)*width, bottom: Math.max(...ys)*height};
+      box.area = (box.right-box.x)*(box.bottom-box.y);
+      if (!groups.has(id) || box.area > groups.get(id).area) groups.set(id, box);
+    }
+    // One full name per class avoids burying small lesions under repeated text.
+    // Every region of that class shares the same color and the legend counts all regions.
+    const occupied = [];
+    ctx.font = 'bold 35px system-ui, sans-serif'; ctx.textBaseline = 'middle';
+    for (const [id, box] of groups) {
+      const text = name(id, names), pad = 12, h = 59;
+      const w = Math.min(width-16, ctx.measureText(text).width+pad*2);
+      const x = Math.min(width-w-8, Math.max(8, box.x));
+      let y = Math.max(8, Math.min(height-h-8, box.y-h-8));
+      for (let tries=0; tries<ids.length; tries++) {
+        if (!occupied.some(r=>x<r.x+r.w && x+w>r.x && y<r.y+r.h && y+h>r.y)) break;
+        y = Math.min(height-h-8, y+h+6);
+      }
+      occupied.push({x,y,w,h});
+      ctx.fillStyle='#10281fec'; ctx.fillRect(x,y,w,h);
+      ctx.strokeStyle=color(id); ctx.lineWidth=3; ctx.strokeRect(x,y,w,h);
+      ctx.fillStyle=color(id); ctx.fillText(text,x+pad,y+h/2,w-pad*2);
+      ctx.beginPath(); ctx.moveTo(x+Math.min(w/2,40),y+h);
+      ctx.lineTo(Math.max(box.x,Math.min(box.right,x+40)),Math.max(box.y,Math.min(box.bottom,y+h)));
+      ctx.stroke();
+    }
+    if (legendHeight) {
+      ctx.fillStyle='#10281f'; ctx.fillRect(0,height,width,legendHeight);
+      ctx.font='30px system-ui, sans-serif'; ctx.textBaseline='middle';
+      ids.forEach((id,i)=>{
+        const count=objects.filter(o=>Number(o.class_id)===id).length;
+        ctx.fillStyle=color(id); ctx.fillRect(16,height+20+i*50,14,23);
+        ctx.fillText(`${name(id,names)}  ·  ${count} ขอบเขต`,43,height+31+i*50,width-60);
+      });
+      if (!ids.length) { ctx.fillStyle='#d7e7dd'; ctx.fillText(options.emptyText,20,height+31,width-40); }
+    }
+    canvas.setAttribute('aria-label', summary(objects,names) || options.emptyText || 'ภาพต้นฉบับ');
+  }
+  global.RiceClassNames = Object.freeze({thai, name, color, summary, draw});
+})(globalThis);
+
+</script>
+<!-- END CLASS NAME RENDERER -->
+<script>
+const $=id=>document.getElementById(id);let all=[],rows=[],pos=0,seq=0,names=[];
+const quality={ai_visually_reviewed_symptom_mask:'AI ตรวจรับขอบเขตรายภาพแล้ว · ชื่อโรคยังไม่ยืนยัน',automatic_symptom_mask_draft:'Label ร่างจากตัวช่วย · ยังไม่ได้ตรวจรับรายภาพ',needs_actual_annotation:'ยังไม่มีขอบเขตที่ใช้งาน · ไม่ถือว่าเป็นภาพปกติ',visual_review_requires_reannotation:'เปิดตรวจแล้ว ขอบเขตยังไม่ครบหรือมีส่วนผิด ต้องแก้เพิ่ม'};
+function match(r){const s=$('status').value;if(s==='reviewed'&&r.quality!=='ai_visually_reviewed_symptom_mask')return false;if(s==='draft'&&r.quality!=='automatic_symptom_mask_draft')return false;if(s==='missing'&&r.label)return false;if(s==='rejected'&&r.quality!=='visual_review_requires_reannotation')return false;return (r.source_relative_path+' '+r.id).toLowerCase().includes($('search').value.toLowerCase())}
+function filter(){rows=all.filter(match);pos=0;render()}
+function paint(id,img,objects){RiceClassNames.draw($(id),img,objects,names)}
+async function render(){const token=++seq;$('pos').textContent=rows.length?`${pos+1} / ${rows.length.toLocaleString()}`:'0 / 0';$('prev').disabled=pos<=0;$('next').disabled=pos>=rows.length-1;$('details').replaceChildren();if(!rows.length){$('details').textContent='ไม่มีภาพตรงกับตัวกรอง';$('maskInfo').textContent='';for(const id of ['original','labeled']){const c=$(id);c.getContext('2d').clearRect(0,0,c.width,c.height)}return}const r=rows[pos],title=document.createElement('strong');title.textContent=r.source_relative_path;$('details').append(title);const q=document.createElement('p');q.textContent=quality[r.quality];q.className='badge';$('details').append(q);const p=document.createElement('p');p.textContent=r.default_split==='train'?'อยู่ในรายการเพิ่ม Tungro ที่ตรวจขอบเขตแล้ว':r.draft_split==='train'?'อยู่ในรายการฝึกแบบร่างเท่านั้น':'พักไว้ ยังไม่เข้ารายการฝึก';$('details').append(p);if(r.reasons.length){const p=document.createElement('p');p.textContent='พักไว้: พบภาพคล้ายกันที่อยู่คนละหมวดโรค หรือมีประเด็นแยกชุดข้อมูล';$('details').append(p)}const link=document.createElement('a');link.href=r.image;link.target='_blank';link.textContent='เปิดภาพขนาดจริง';$('details').append(link);if(r.label){const a=document.createElement('a');a.href=r.label;a.target='_blank';a.textContent=' · เปิดไฟล์ label';$('details').append(a)}try{const [data,img]=await Promise.all([fetch(r.prediction_file).then(x=>{if(!x.ok)throw Error(x.status);return x.json()}),new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=r.image})]);if(token!==seq)return;paint('original',img,[]);paint('labeled',img,data.objects);$('maskInfo').textContent=data.objects.length?`${data.objects.length} บริเวณ · ${RiceClassNames.summary(data.objects,names)}`:'ยังไม่มีขอบเขตที่ใช้งาน';history.replaceState(null,'','?id='+encodeURIComponent(r.id))}catch(e){$('details').append(' เปิดภาพไม่สำเร็จ: '+e.message)}}
+$('status').onchange=filter;$('search').oninput=filter;$('prev').onclick=()=>{if(pos>0){pos--;render()}};$('next').onclick=()=>{if(pos<rows.length-1){pos++;render()}};document.addEventListener('keydown',e=>{if(['INPUT','SELECT'].includes(e.target.tagName))return;if(e.key==='ArrowRight')$('next').click();if(e.key==='ArrowLeft')$('prev').click()});Promise.all([fetch('manifest.json').then(r=>r.json()),fetch('report.json').then(r=>r.json())]).then(([m,r])=>{all=m;names=r.class_names;$('summary').textContent=`ตรวจทั้งหมวด ${m.length.toLocaleString()} ภาพ · มี label ${r.tungro_label_files.toLocaleString()} ภาพ · AI ตรวจรับ ${r.status_counts.ai_visually_reviewed_symptom_mask||0} ภาพ`;const id=new URLSearchParams(location.search).get('id');if(id){$('status').value='all';rows=all;pos=Math.max(0,rows.findIndex(r=>r.id===id));render()}else filter()}).catch(e=>$('summary').textContent='โหลดชุดข้อมูลไม่สำเร็จ: '+e.message);
+</script></html>
